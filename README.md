@@ -1,4 +1,5 @@
 # Bomberman
+DEADLINE 28.april
 
 ## to do list
 - everything

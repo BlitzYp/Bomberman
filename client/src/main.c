@@ -9,6 +9,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <ncurses.h>
+
 static int send_header(int fd, const msg_header_t* header)
 {
     if (send_u8(fd, header->msg_type) < 0) return -1;
@@ -119,6 +121,50 @@ static int send_leave(int fd)
     return send_header(fd, &header);
 }
 
+void draw_map() {
+    WINDOW * mainwind, * map_wind, * unbreakable_box;
+    initscr();
+    int map_width = 30, map_height = 13; // static sizes for testing
+    
+    if ( (mainwind = initscr()) == NULL ) {
+        fprintf(stderr, "Error initialising ncurses.\n");
+        // exit(EXIT_FAILURE);
+        return;
+    }
+
+    noecho();
+
+    map_wind = subwin(mainwind, map_height, map_width, 0, 0);
+    box(map_wind, 0, 0);
+    mvwaddch(map_wind, 1, 1, 'H');
+    // box(map_wind, 2, 2);
+
+    unbreakable_box = subwin(map_wind, 1, 1, 2, 2);
+    box(unbreakable_box, 0, 0);
+
+    
+
+
+    refresh();
+
+    getch();
+
+    // mvwdelch(map_wind, 0, 0);
+    wdelch(map_wind);
+
+    wrefresh(map_wind);
+
+    getch();
+
+    delwin(unbreakable_box);
+    delwin(map_wind);
+    delwin(mainwind);
+    endwin();
+    refresh();
+
+    return;
+}
+
 int main(void)
 {
     int fd=connect_to_server("127.0.0.1", 1727);
@@ -126,6 +172,8 @@ int main(void)
         fprintf(stderr, "connect failed\n");
         return 1;
     }
+
+    draw_map();
 
     if (send_hello(fd, "debug-client", "Janis banis") < 0) {
         fprintf(stderr, "send HELLO failed\n");

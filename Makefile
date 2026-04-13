@@ -37,7 +37,7 @@ $(SERVER_BIN): $(SERVER_OBJS)
 
 $(CLIENT_BIN): $(CLIENT_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@ -lncurses
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)

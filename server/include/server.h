@@ -12,8 +12,8 @@ typedef struct {
     game_state_t state;
 } server_t;
 
-int server_init(server_t* server, int port);
-int server_run(server_t* server);
+int init_server(server_t* server, int port);
+int run_server(server_t* server);
 void shutdown_server(server_t* server);
 
 #endif

@@ -12,11 +12,12 @@ int game_state_init(game_state_t* state)
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         state->players[i].id=i;
         state->players[i].socket_fd=-1;
+        state->players[i].connected=false;
     }
     return 0;
 }
 
 void game_state_destroy(game_state_t* state)
 {
-    pthread_mutex_destroy(&state->mutex);
+    if (!state->running) pthread_mutex_destroy(&state->mutex);
 }

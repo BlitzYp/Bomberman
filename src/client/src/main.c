@@ -9,6 +9,23 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <ncurses.h>
+
+static int send_header(int fd, const msg_header_t* header)
+{
+    if (send_u8(fd, header->msg_type) < 0) return -1;
+    if (send_u8(fd, header->sender_id) < 0) return -1;
+    if (send_u8(fd, header->target_id) < 0) return -1;
+    return 0;
+}
+
+static int recv_header(int fd, msg_header_t* header)
+{
+    if (recv_u8(fd, &header->msg_type) < 0) return -1;
+    if (recv_u8(fd, &header->sender_id) < 0) return -1;
+    if (recv_u8(fd, &header->target_id) < 0) return -1;
+    return 0;
+}
 static int connect_to_server(const char* ip, int port)
 {
 
@@ -63,7 +80,7 @@ static int recv_welcome(int fd)
     uint8_t status;
     uint8_t player_count;
 
-    if (get_header(fd, &header) < 0) return -1;
+    if (recv_header(fd, &header) < 0) return -1;
     if (header.msg_type != MSG_WELCOME) return -1;
 
     if (read_exact(fd, server_id, MAX_CLIENT_ID_LEN) < 0) return -1;
@@ -103,6 +120,50 @@ static int send_leave(int fd)
     return send_header(fd, &header);
 }
 
+void draw_map() {
+    WINDOW * mainwind, * map_wind, * unbreakable_box;
+    initscr();
+    int map_width = 30, map_height = 13; // static sizes for testing
+    
+    if ( (mainwind = initscr()) == NULL ) {
+        fprintf(stderr, "Error initialising ncurses.\n");
+        // exit(EXIT_FAILURE);
+        return;
+    }
+
+    noecho();
+
+    map_wind = subwin(mainwind, map_height, map_width, 0, 0);
+    box(map_wind, 0, 0);
+    mvwaddch(map_wind, 1, 1, 'H');
+    // box(map_wind, 2, 2);
+
+    unbreakable_box = subwin(map_wind, 1, 1, 2, 2);
+    box(unbreakable_box, 0, 0);
+
+    
+
+
+    refresh();
+
+    getch();
+
+    // mvwdelch(map_wind, 0, 0);
+    wdelch(map_wind);
+
+    wrefresh(map_wind);
+
+    getch();
+
+    delwin(unbreakable_box);
+    delwin(map_wind);
+    delwin(mainwind);
+    endwin();
+    refresh();
+
+    return;
+}
+
 int main(void)
 {
     int fd=connect_to_server("127.0.0.1", 1727);
@@ -110,6 +171,8 @@ int main(void)
         fprintf(stderr, "connect failed\n");
         return 1;
     }
+
+    draw_map();
 
     if (send_hello(fd, "debug-client", "Janis banis") < 0) {
         fprintf(stderr, "send HELLO failed\n");

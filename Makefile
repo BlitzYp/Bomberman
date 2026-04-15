@@ -10,16 +10,16 @@ LDFLAGS :=
 LDLIBS := -pthread
 
 SERVER_SRCS := \
-	server/src/main.c \
-	server/src/server.c \
-	server/src/game_state.c \
-	shared/src/net_utils.c
+	src/server/src/main.c \
+	src/server/src/server.c \
+	src/server/src/game_state.c \
+	src/shared/src/net_utils.c
 
 SERVER_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SERVER_SRCS))
 
 CLIENT_SRCS := \
-	client/src/main.c \
-	shared/src/net_utils.c
+	src/client/src/main.c \
+	src/shared/src/net_utils.c
 
 CLIENT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CLIENT_SRCS))
 
@@ -37,7 +37,7 @@ $(SERVER_BIN): $(SERVER_OBJS)
 
 $(CLIENT_BIN): $(CLIENT_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@ -lncurses
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)

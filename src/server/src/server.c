@@ -220,6 +220,18 @@ static int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
     return 0;
 }
 
+static bool check_unique_name(server_t* server,char* name, uint8_t slot_id)
+{
+    if (!name || !server) return -1;
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* player=&server->state.players[i];
+        if (!player->connected || i==slot_id) continue;
+        char* check=player[i].name;
+        if (strncmp(name,check,MAX_NAME_LEN)==0) return false;
+    }
+    return true;
+}
+
 static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)
 {
     msg_hello_t msg;
@@ -230,12 +242,13 @@ static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_heade
 
     pthread_mutex_lock(&server->state.mutex);
     // TODO: Implement check if the name is valid and is unique
-    if (true) {
-        memcpy(server->state.players[slot_id].name,msg.player_name,MAX_NAME_LEN);
+    bool r=check_unique_name(server, msg.player_name,slot_id);
+    if (r) {
+        memcpy(server->state.players[slot_id].name,msg.player_name,MAX_NAME_LEN-1);
         server->state.players[slot_id].name[MAX_NAME_LEN]='\0';
     }
     pthread_mutex_unlock(&server->state.mutex);
-
+    if (!r) return -1;
     if (send_welcome(server,client_fd,slot_id)!=0) return -1;
 
     printf("HELLO FROM SLOT %u\n",slot_id);

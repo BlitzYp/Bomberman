@@ -64,7 +64,7 @@ int recv_u16_be(int fd, uint16_t* value)
 }
 
 // Fill the main header
-static int get_header(int fd,msg_header_t* header)
+int get_header(int fd,msg_header_t* header)
 {
     if (recv_u8(fd,&header->msg_type)<0) return -1;
     if (recv_u8(fd,&header->sender_id)<0) return -1;
@@ -72,7 +72,7 @@ static int get_header(int fd,msg_header_t* header)
     return 0;
 }
 
-static int send_header(int fd, msg_header_t* header)
+int send_header(int fd, msg_header_t* header)
 {
     if (send_u8(fd,header->msg_type)<0) return -1;
     if (send_u8(fd,header->sender_id)<0) return -1;

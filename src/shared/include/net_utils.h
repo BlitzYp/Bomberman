@@ -14,6 +14,8 @@ int send_u16_be(int fd, uint16_t value);
 int recv_u8(int fd, uint8_t* value);
 int recv_u16_be(int fd, uint16_t* value);
 
-static int get_header(int fd,msg_header_t* header);
-static int send_header(int fd,msg_header_t* header);
+/*
+int get_header(int fd,msg_header_t* header);
+int send_header(int fd,msg_header_t* header);
+*/
 #endif

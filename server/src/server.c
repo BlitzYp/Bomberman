@@ -25,23 +25,6 @@ typedef struct {
     uint8_t slot_id; // player_id
 } client_thread_args_t;
 
-// Fill the main header
-static int get_header(int fd,msg_header_t* header)
-{
-    if (recv_u8(fd,&header->msg_type)<0) return -1;
-    if (recv_u8(fd,&header->sender_id)<0) return -1;
-    if (recv_u8(fd,&header->target_id)<0) return -1;
-    return 0;
-}
-
-static int send_header(int fd, const msg_header_t* header)
-{
-    if (send_u8(fd,header->msg_type)<0) return -1;
-    if (send_u8(fd,header->sender_id)<0) return -1;
-    if (send_u8(fd,header->target_id)<0) return -1;
-    return 0;
-}
-
 static int get_listen_socket(int port)
 {
     int fd=socket(AF_INET,SOCK_STREAM,0);

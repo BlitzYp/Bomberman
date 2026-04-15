@@ -1,5 +1,5 @@
 #include "../include/net_utils.h"
-
+#include "../include/protocol.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <unistd.h>
@@ -60,5 +60,22 @@ int recv_u16_be(int fd, uint16_t* value)
     if (value==NULL) return -1;
     if (read_exact(fd, &network_value, sizeof(network_value)) < 0) return -1;
     *value=ntohs(network_value);
+    return 0;
+}
+
+// Fill the main header
+static int get_header(int fd,msg_header_t* header)
+{
+    if (recv_u8(fd,&header->msg_type)<0) return -1;
+    if (recv_u8(fd,&header->sender_id)<0) return -1;
+    if (recv_u8(fd,&header->target_id)<0) return -1;
+    return 0;
+}
+
+static int send_header(int fd, msg_header_t* header)
+{
+    if (send_u8(fd,header->msg_type)<0) return -1;
+    if (send_u8(fd,header->sender_id)<0) return -1;
+    if (send_u8(fd,header->target_id)<0) return -1;
     return 0;
 }

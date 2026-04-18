@@ -12,6 +12,7 @@ typedef struct {
     int socket_fd;
     uint8_t id;
     char name[MAX_NAME_LEN+1];
+    player_t *p;
 } player_slot_t;
 
 typedef struct {

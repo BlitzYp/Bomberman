@@ -58,6 +58,29 @@ static int send_hello(int fd, const char* client_id, const char* player_name)
     return 0;
 }
 
+static int send_player_move(int fd, const char* client_id, const char* player_name)
+{
+    msg_header_t header;
+    char client_id_buf[MAX_CLIENT_ID_LEN];
+    char player_name_buf[MAX_NAME_LEN];
+
+    memset(client_id_buf, 0, sizeof(client_id_buf));
+    memset(player_name_buf, 0, sizeof(player_name_buf));
+
+    strncpy(client_id_buf, client_id, MAX_CLIENT_ID_LEN);
+    strncpy(player_name_buf, player_name, MAX_NAME_LEN);
+
+    header.msg_type = MSG_MOVE_ATTEMPT;
+    header.sender_id = SERVER_TARGET_ID;
+    header.target_id = SERVER_TARGET_ID;
+
+    if (send_header(fd, &header) < 0) return -1;
+    if (write_exact(fd, client_id_buf, MAX_CLIENT_ID_LEN) < 0) return -1;
+    if (write_exact(fd, player_name_buf, MAX_NAME_LEN) < 0) return -1;
+
+    return 0;
+}
+
 static int recv_welcome(int fd)
 {
     msg_header_t header;

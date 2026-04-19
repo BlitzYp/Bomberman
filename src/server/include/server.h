@@ -4,13 +4,14 @@
 #include <pthread.h>
 
 #include "game_state.h"
+#include "player_states.h"
 
-typedef struct {
-    int listen_fd;
-    int port;
-    pthread_t tick_thread;
-    game_state_t state;
-} server_t;
+// typedef struct {
+//     int listen_fd;
+//     int port;
+//     pthread_t tick_thread;
+//     game_state_t state;
+// } server_t;
 
 int init_server(server_t* server, int port);
 int run_server(server_t* server);

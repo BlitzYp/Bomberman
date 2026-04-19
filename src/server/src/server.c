@@ -6,6 +6,7 @@ TODO:
 #include "../include/server.h"
 #include "../../shared/include/protocol.h"
 #include "../../shared/include/net_utils.h"
+#include "../include/player_states.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -277,6 +278,9 @@ static void* client_thread_main(void* arg)
                 if (handle_hello(server,client_fd,slot_id,header)<0) connection_active=false;
                 break;
             }
+            case MSG_MOVE_ATTEMPT:
+                if (handle_move(server,client_fd,slot_id,header)<0) connection_active=false;
+                break;
             case MSG_LEAVE:
                 connection_active=false;
                 break;

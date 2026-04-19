@@ -14,10 +14,34 @@ int game_state_init(game_state_t* state)
         state->players[i].socket_fd=-1;
         state->players[i].connected=false;
     }
+    state->rows=13;
+    state->cols=30;
     return 0;
 }
 
 void game_state_destroy(game_state_t* state)
 {
-    if (!state->running) pthread_mutex_destroy(&state->mutex);
+    pthread_mutex_destroy(&state->mutex);
+}
+
+int enqueue_action(game_state_t* state,action_t action)
+{
+    action_queue_t* q=&state->action_queue;
+    if (q->count>=ACTION_QUEUE_CAPACITY) return -1;
+
+    q->items[q->tail]=action;
+    q->tail=(q->tail+1)%ACTION_QUEUE_CAPACITY;
+    q->count++;
+    return 0;
+}
+
+int dequeue_action(game_state_t* state,action_t* action)
+{
+    action_queue_t* q=&state->action_queue;
+    if (q->count<=0) return -1;
+
+    *action=q->items[q->head];
+    q->head=(q->head+1)%ACTION_QUEUE_CAPACITY;
+    q->count--;
+    return 0;
 }

@@ -4,7 +4,7 @@ BUILD_DIR := build
 SERVER_BIN := $(BUILD_DIR)/bin/server
 CLIENT_BIN := $(BUILD_DIR)/bin/client
 
-CPPFLAGS := -Ishared/include -Iserver/include -Iclient/include
+CPPFLAGS := -Isrc/shared/include -Isrc/server/include -Isrc/client/include
 CFLAGS := -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter
 LDFLAGS :=
 LDLIBS := -pthread

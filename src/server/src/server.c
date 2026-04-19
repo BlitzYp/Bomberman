@@ -1,7 +1,3 @@
-/*
-TODO:
-    - Game simulation in the tick function
-*/
 #define _DEFAULT_SOURCE
 #include "../include/server.h"
 #include "../../shared/include/protocol.h"
@@ -33,6 +29,14 @@ static int get_listen_socket(int port)
         perror("Error creating socket for listening...");
         return -1;
     }
+
+    int reuse=1;
+    if (setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse))<0) {
+        perror("Error setting socket reuse option...");
+        close(fd);
+        return -1;
+    }
+
     struct sockaddr_in addr;
     memset(&addr,0,sizeof(addr));
     addr.sin_family=AF_INET;
@@ -105,7 +109,7 @@ void shutdown_server(server_t* server)
         server->tick_thread=0;
     }
 
-    while (server_is_running(server)==false) {
+    for(;;) {
         uint8_t active_players;
 
         pthread_mutex_lock(&server->state.mutex);
@@ -119,6 +123,23 @@ void shutdown_server(server_t* server)
     game_state_destroy(&server->state);
 }
 
+int broadcast_header(server_t* server, msg_header_t* header)
+{
+    if (!server || !header) return -1;
+    int result=0;
+    pthread_mutex_lock(&server->state.mutex);
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* player=&server->state.players[i];
+        if (!player->connected) continue;
+        if (send_header(player->socket_fd,header)<0) {
+            result=-1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+    return result;
+}
+
 // Makes the server operate at 20 ticks per second
 static void* tick_thread_loop(void* arg)
 {
@@ -127,21 +148,60 @@ static void* tick_thread_loop(void* arg)
 
     for (;;) {
         usleep(sleep_time);
-
+        bool moved_players[MAX_PLAYERS]={0};
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
             break;
         }
 
+        //-- Process queued actions
+        action_t action;
+        while (dequeue_action(&server->state,&action)==0) {
+            if (action.type==ACTION_MOVE) {
+                player_slot_t* slot=&server->state.players[action.player_id];
+                if (!slot->connected || !slot->alive) continue;
+
+                int x=slot->p.col,y=slot->p.row;
+                switch (action.direction) {
+                    case DIR_LEFT:
+                        x--;
+                        break;
+                    case DIR_RIGHT:
+                        x++;
+                        break;
+                    case DIR_UP:
+                        y--;
+                        break;
+                    case DIR_DOWN:
+                        y++;
+                        break;
+                    default: break;
+                }
+
+                if (y>0 && x>0 && y<server->state.rows-1 && x<server->state.cols-1) {
+                    slot->p.row=y;
+                    slot->p.col=x;
+                }
+                moved_players[slot->id]=true;
+            }
+        }
         // Simulation here
         // TODO: authoritative game simulation:
-        // - process queued actions
         // - update bomb timers
         // - resolve explosions
         // - detect deaths
         // - check win condition
         pthread_mutex_unlock(&server->state.mutex);
+
+        // Send move here to avoid deadlock situation
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            if (!moved_players[i]) continue;
+            if (send_move(server,i)!=0) {
+                // log err
+                printf("Error sending movement data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+            }
+        }
     }
     return NULL;
 }
@@ -154,6 +214,11 @@ void init_slot(player_slot_t* slot,int client_fd,uint8_t id)
     slot->socket_fd=client_fd;
     slot->id=id;
     slot->name[0]='\0';
+    slot->p.id=id;
+    slot->p.alive=true;
+    slot->p.ready=false;
+    slot->p.row=1;
+    slot->p.col=(uint16_t)(1+id);
 }
 
 static void free_player_slot(server_t* server, uint8_t slot_id)
@@ -227,7 +292,7 @@ static bool check_unique_name(server_t* server,char* name, uint8_t slot_id)
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         player_slot_t* player=&server->state.players[i];
         if (!player->connected || i==slot_id) continue;
-        char* check=player[i].name;
+        char* check=player->name;
         if (strncmp(name,check,MAX_NAME_LEN)==0) return false;
     }
     return true;
@@ -236,6 +301,8 @@ static bool check_unique_name(server_t* server,char* name, uint8_t slot_id)
 static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)
 {
     msg_hello_t msg;
+    uint8_t connected_count=0;
+    uint8_t connected_players[MAX_PLAYERS];
 
     msg.header=header;
     if (read_exact(client_fd,msg.client_id,MAX_CLIENT_ID_LEN)<0) return -1;
@@ -245,12 +312,19 @@ static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_heade
     // TODO: Implement check if the name is valid and is unique
     bool r=check_unique_name(server, msg.player_name,slot_id);
     if (r) {
-        memcpy(server->state.players[slot_id].name,msg.player_name,MAX_NAME_LEN-1);
+        memcpy(server->state.players[slot_id].name,msg.player_name,MAX_NAME_LEN);
         server->state.players[slot_id].name[MAX_NAME_LEN]='\0';
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            if (!server->state.players[i].connected) continue;
+            connected_players[connected_count++]=i;
+        }
     }
     pthread_mutex_unlock(&server->state.mutex);
     if (!r) return -1;
     if (send_welcome(server,client_fd,slot_id)!=0) return -1;
+    for (uint8_t i=0;i<connected_count;i++) {
+        if (send_move(server,connected_players[i])!=0) return -1;
+    }
 
     printf("HELLO FROM SLOT %u\n",slot_id);
     return 0;

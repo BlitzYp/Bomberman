@@ -4,6 +4,7 @@
 #include "../../shared/include/net_utils.h"
 
 #include <pthread.h>
+#include <stdio.h>
 
 int send_move(server_t* server, uint8_t slot_id)
 {
@@ -41,6 +42,43 @@ int send_move(server_t* server, uint8_t slot_id)
     }
 
     return 0;
+}
+
+void send_move_broadcast(server_t* server, bool* moved_players)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!moved_players[i]) continue;
+        if (send_move(server,i)!=0) {
+            // log err
+            printf("Error sending movement data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+        }
+    }
+}
+
+void handle_action_move(server_t* server,player_slot_t* slot,bool* moved_players,action_t action)
+{
+    int x=slot->p.col,y=slot->p.row;
+    switch (action.direction) {
+        case DIR_LEFT:
+            x--;
+            break;
+        case DIR_RIGHT:
+            x++;
+            break;
+        case DIR_UP:
+            y--;
+            break;
+        case DIR_DOWN:
+            y++;
+            break;
+        default: break;
+    }
+
+    if (y>0 && x>0 && y<server->state.rows-1 && x<server->state.cols-1) {
+        slot->p.row=y;
+        slot->p.col=x;
+    }
+    moved_players[slot->id]=true;
 }
 
 int handle_move(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)

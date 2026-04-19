@@ -4,6 +4,7 @@
 #include "../../shared/include/net_utils.h"
 #include "../include/player_states.h"
 
+#include <ncurses.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -123,22 +124,24 @@ void shutdown_server(server_t* server)
     game_state_destroy(&server->state);
 }
 
-int broadcast_header(server_t* server, msg_header_t* header)
-{
-    if (!server || !header) return -1;
-    int result=0;
-    pthread_mutex_lock(&server->state.mutex);
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        player_slot_t* player=&server->state.players[i];
-        if (!player->connected) continue;
-        if (send_header(player->socket_fd,header)<0) {
-            result=-1;
-            break;
+/*
+    int broadcast_header(server_t* server, msg_header_t* header)
+    {
+        if (!server || !header) return -1;
+        int result=0;
+        pthread_mutex_lock(&server->state.mutex);
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            player_slot_t* player=&server->state.players[i];
+            if (!player->connected) continue;
+            if (send_header(player->socket_fd,header)<0) {
+                result=-1;
+                break;
+            }
         }
+        pthread_mutex_unlock(&server->state.mutex);
+        return result;
     }
-    pthread_mutex_unlock(&server->state.mutex);
-    return result;
-}
+ */
 
 // Makes the server operate at 20 ticks per second
 static void* tick_thread_loop(void* arg)
@@ -161,31 +164,12 @@ static void* tick_thread_loop(void* arg)
             if (action.type==ACTION_MOVE) {
                 player_slot_t* slot=&server->state.players[action.player_id];
                 if (!slot->connected || !slot->alive) continue;
-
-                int x=slot->p.col,y=slot->p.row;
-                switch (action.direction) {
-                    case DIR_LEFT:
-                        x--;
-                        break;
-                    case DIR_RIGHT:
-                        x++;
-                        break;
-                    case DIR_UP:
-                        y--;
-                        break;
-                    case DIR_DOWN:
-                        y++;
-                        break;
-                    default: break;
-                }
-
-                if (y>0 && x>0 && y<server->state.rows-1 && x<server->state.cols-1) {
-                    slot->p.row=y;
-                    slot->p.col=x;
-                }
-                moved_players[slot->id]=true;
+                handle_action_move(server,slot,moved_players,action);
             }
+            // OTHER ACTIONS HERE
+            // TODO: PLACE BOMB ACTION
         }
+
         // Simulation here
         // TODO: authoritative game simulation:
         // - update bomb timers
@@ -194,14 +178,8 @@ static void* tick_thread_loop(void* arg)
         // - check win condition
         pthread_mutex_unlock(&server->state.mutex);
 
-        // Send move here to avoid deadlock situation
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (!moved_players[i]) continue;
-            if (send_move(server,i)!=0) {
-                // log err
-                printf("Error sending movement data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
-            }
-        }
+        // Send move message to all here to avoid deadlock situation
+        send_move_broadcast(server,moved_players);
     }
     return NULL;
 }
@@ -309,7 +287,7 @@ static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_heade
     if (read_exact(client_fd,msg.player_name,MAX_NAME_LEN)<0) return -1;
 
     pthread_mutex_lock(&server->state.mutex);
-    // TODO: Implement check if the name is valid and is unique
+    // TODO: Implement check if the name is valid
     bool r=check_unique_name(server, msg.player_name,slot_id);
     if (r) {
         memcpy(server->state.players[slot_id].name,msg.player_name,MAX_NAME_LEN);
@@ -326,7 +304,7 @@ static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_heade
         if (send_move(server,connected_players[i])!=0) return -1;
     }
 
-    printf("HELLO FROM SLOT %u\n",slot_id);
+    printf("HELLO FROM %s SLOT %u\n",msg.player_name,slot_id);
     return 0;
 }
 

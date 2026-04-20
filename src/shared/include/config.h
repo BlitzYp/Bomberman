@@ -80,7 +80,9 @@ typedef struct {
 typedef enum {
     TILE_EMPTY=0,
     TILE_HARD_WALL=1,
-    TILE_SOFT_BLOCK=2
+    TILE_SOFT_BLOCK=2,
+    TILE_BOMB=3,
+    TILE_BOMB_EXPLODE=4,
 } tile_t;
 
 typedef struct {

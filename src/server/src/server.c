@@ -152,6 +152,7 @@ static void* tick_thread_loop(void* arg)
     for (;;) {
         usleep(sleep_time);
         bool moved_players[MAX_PLAYERS]={0};
+        bool bomb_placed_players[MAX_PLAYERS]={0};
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
@@ -162,6 +163,7 @@ static void* tick_thread_loop(void* arg)
         action_t action;
         while (dequeue_action(&server->state,&action)==0) {
             if (action.type==ACTION_MOVE) {
+                printf("action move");
                 player_slot_t* slot=&server->state.players[action.player_id];
                 if (!slot->connected || !slot->alive) continue;
                 handle_action_move(server,slot,action);
@@ -169,19 +171,36 @@ static void* tick_thread_loop(void* arg)
             }
             else if (action.type==ACTION_BOMB) {
                 // TODO: BOMB ACTION
+                // player_slot_t* slot=&server->state.players[action.player_id];
+                bomb_t* slot=&server->state.bombs[action.player_id];
+                // if (slot->timer_ticks>0 || !slot->active) continue;
+                handle_action_bomb(server,slot,action);
+                bomb_placed_players[slot->owner_id]=true;
             }
         }
 
         // Simulation here
         // TODO: authoritative game simulation:
         // - update bomb timers
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks>0) {
+                server->state.bombs[i].timer_ticks--;
+            }
+        }
         // - resolve explosions
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks==0) {
+                bomb_explode_start(server,&server->state.bombs[i]);
+                server->state.bombs[i].active=0;
+            }
+        }
         // - detect deaths
         // - check win condition
         pthread_mutex_unlock(&server->state.mutex);
 
         // Send move message to all here to avoid deadlock situation
         send_move_broadcast(server,moved_players);
+        send_bomb_broadcast(server,bomb_placed_players);
     }
     return NULL;
 }
@@ -364,6 +383,9 @@ static void* client_thread_main(void* arg)
             }
             case MSG_MOVE_ATTEMPT:
                 if (handle_move(server,client_fd,slot_id,header)<0) connection_active=false;
+                break;
+            case MSG_BOMB_ATTEMPT:
+                if (handle_bomb(server,client_fd,slot_id,header)<0) connection_active=false;
                 break;
             case MSG_LEAVE:
                 connection_active=false;

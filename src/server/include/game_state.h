@@ -39,6 +39,8 @@ typedef struct {
     bool running;
     player_slot_t players[MAX_PLAYERS];
     uint8_t player_count;
+    bomb_t bombs[MAX_PLAYERS];
+    uint8_t bomb_count;
     action_queue_t action_queue;
     pthread_mutex_t mutex;
     map_t map;

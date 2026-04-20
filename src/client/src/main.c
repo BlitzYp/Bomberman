@@ -76,6 +76,19 @@ static int send_player_move(int fd, uint8_t dir)
     return 0;
 }
 
+static int send_player_bomb(int fd)
+{
+    msg_bomb_attempt_t attempt;
+
+    attempt.header.msg_type = MSG_BOMB_ATTEMPT;
+    attempt.header.sender_id = SERVER_TARGET_ID;
+    attempt.header.target_id = SERVER_TARGET_ID;
+
+    if (send_header(fd, &attempt.header) < 0) return -1;
+
+    return 0;
+}
+
 static int recv_welcome(int fd)
 {
     msg_header_t header;
@@ -122,6 +135,10 @@ static char tile_to_char(tile_t tile)
         case TILE_HARD_WALL:
             return '#';
         case TILE_SOFT_BLOCK:
+            return '%';
+        case TILE_BOMB:
+            return 'O';
+        case TILE_BOMB_EXPLODE:
             return '+';
         default:
             return '?';
@@ -222,19 +239,80 @@ static int recv_player_move_payload(int fd, WINDOW* win, client_game_t* game)
     return 0;
 }
 
+// static int recv_player_bomb_payload(int fd, WINDOW* win, client_game_t* game)
+// {
+//     uint8_t player_id;
+//     uint16_t cell_index;
+//     uint16_t row;
+//     uint16_t col;
+//     printf("bomb");
+
+//     if (recv_u8(fd, &player_id) < 0) return -1;
+//     if (recv_u16_be(fd, &cell_index) < 0) return -1;
+//     if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
+
+//     row=cell_index/game->cols;
+//     col=cell_index%game->cols;
+//     if (row>=game->rows || col>=game->cols) return -1;
+
+//     game->tiles[cell_index]=TILE_BOMB;
+//     // game->tiles[player_id].known=true;
+//     // game->tiles[player_id].row=row;
+//     // game->players[player_id].col=col;
+
+//     return 0;
+// }
+
+// static int recv_bomb_start_payload(int fd, WINDOW* win, client_game_t* game)
+// {
+//     uint8_t player_id;
+//     uint16_t cell_index;
+//     uint16_t row;
+//     uint16_t col;
+
+//     if (recv_u8(fd, &player_id) < 0) return -1;
+//     if (recv_u16_be(fd, &cell_index) < 0) return -1;
+//     if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
+
+//     row=cell_index/game->cols;
+//     col=cell_index%game->cols;
+//     if (row>=game->rows || col>=game->cols) return -1;
+
+//     game->tiles[cell_index]=TILE_BOMB_EXPLODE;
+//     // game->tiles[player_id].known=true;
+//     // game->tiles[player_id].row=row;
+//     // game->players[player_id].col=col;
+
+//     return 0;
+// }
+
 // PROCESS SERVER EVENTS HERE
 static int process_server_message(int fd, WINDOW* win, client_game_t* game)
 {
     msg_header_t header;
+    // printf("about head");
     if (get_header(fd, &header)<0) return -1;
+    // printf("got head");
     switch (header.msg_type) {
         case MSG_MAP:
+            printf("rec map");
             if (recv_map_payload(fd,game)<0) return -1;
             redraw_game(win,game);
             return 0;
         case MSG_MOVED:
+            printf("rec move");
             if (recv_player_move_payload(fd,win,game)!=0) return -1;
             redraw_game(win,game);
+            return 0;
+        case MSG_BOMB:
+            printf("rec bomb");
+            // if (recv_player_bomb_payload(fd,win,game)!=0) return -1;
+            // redraw_game(win,game);
+            return 0;
+        case MSG_EXPLOSION_START:
+            printf("rec bomb start");
+            // if (recv_bomb_start_payload(fd,win,game)!=0) return -1;
+            // redraw_game(win,game);
             return 0;
         default: return -1;
     }
@@ -372,6 +450,16 @@ int main(int argc, char** argv)
             case KEY_RIGHT:
                 dir = DIR_RIGHT;
                 break;
+            case ' ':
+                dir = -1;
+                if (send_player_bomb(fd) < 0) {
+                    end_wind(mainwind, map_wind);
+                    fprintf(stderr, "send bomb failed\n");
+                    close(fd);
+                    free(game.tiles);
+                    return 1;
+                }
+                break;
             case 'q':
                 send_leave(fd);
                 end_wind(mainwind, map_wind);
@@ -389,7 +477,6 @@ int main(int argc, char** argv)
             free(game.tiles);
             return 1;
         }
-
     }
 
     end_wind(mainwind, map_wind);

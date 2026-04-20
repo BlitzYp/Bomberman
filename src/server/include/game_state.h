@@ -41,8 +41,7 @@ typedef struct {
     uint8_t player_count;
     action_queue_t action_queue;
     pthread_mutex_t mutex;
-    // temporary
-    uint16_t rows,cols;
+    map_t map;
 } game_state_t;
 
 int game_state_init(game_state_t* state);

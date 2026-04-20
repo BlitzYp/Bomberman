@@ -55,27 +55,41 @@ typedef enum {
     MSG_BLOCK_DESTROYED = 47
 } msg_type_t;
 
-typedef struct { 
-    uint8_t id; 
-    char name[MAX_NAME_LEN + 1]; 
-    uint16_t row; 
-    uint16_t col; 
-    bool alive; 
-    bool ready; 
-    uint8_t bomb_count; 
-    uint8_t bomb_radius; 
-    uint16_t bomb_timer_ticks; 
+typedef struct {
+    uint8_t id;
+    char name[MAX_NAME_LEN + 1];
+    uint16_t row;
+    uint16_t col;
+    bool alive;
+    bool ready;
+    uint8_t bomb_count;
+    uint8_t bomb_radius;
+    uint16_t bomb_timer_ticks;
     uint16_t speed;
 } player_t;
 
-typedef struct { 
-    bool active; 
-    uint8_t owner_id; 
-    uint16_t row; 
-    uint16_t col; 
-    uint8_t radius; 
-    uint16_t timer_ticks; 
+typedef struct {
+    bool active;
+    uint8_t owner_id;
+    uint16_t row;
+    uint16_t col;
+    uint8_t radius;
+    uint16_t timer_ticks;
 } bomb_t;
+
+typedef enum {
+    TILE_EMPTY=0,
+    TILE_HARD_WALL=1,
+    TILE_SOFT_BLOCK=2
+} tile_t;
+
+typedef struct {
+    uint16_t rows;
+    uint16_t cols;
+    tile_t* tiles;
+    uint16_t spawn_cells[MAX_PLAYERS];
+    uint8_t spawn_count;
+} map_t;
 
 static inline uint16_t make_cell_index(uint16_t row, uint16_t col, uint16_t cols) {
     return (uint16_t)(row * cols + col);

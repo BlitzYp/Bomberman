@@ -1,7 +1,11 @@
 #include "../include/game_state.h"
+#include "../../shared/include/map_loader.h"
+#include "../../shared/include/config.h"
+
 #include <pthread.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 
 int game_state_init(game_state_t* state)
 {
@@ -14,14 +18,18 @@ int game_state_init(game_state_t* state)
         state->players[i].socket_fd=-1;
         state->players[i].connected=false;
     }
-    state->rows=13;
-    state->cols=30;
+
+    if (map_load_from_file("src/assets/maps/sample_map.txt",&state->map)!=0) {
+        pthread_mutex_destroy(&state->mutex);
+        return -1;
+    }
     return 0;
 }
 
 void game_state_destroy(game_state_t* state)
 {
     pthread_mutex_destroy(&state->mutex);
+    map_destroy(&state->map);
 }
 
 int enqueue_action(game_state_t* state,action_t action)

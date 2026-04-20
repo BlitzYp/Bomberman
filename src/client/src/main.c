@@ -1,24 +1,19 @@
 #include "../../shared/include/config.h"
 #include "../../shared/include/protocol.h"
 #include "../../shared/include/net_utils.h"
+#include "../include/client.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
 #include <ncurses.h>
-
-typedef struct {
-    bool known;
-    uint16_t row;
-    uint16_t col;
-} client_player_t;
 
 static int connect_to_server(const char* ip, int port)
 {
@@ -119,20 +114,93 @@ static int recv_welcome(int fd)
     return 0;
 }
 
-static void redraw_players(WINDOW* win, client_player_t players[MAX_PLAYERS])
+static char tile_to_char(tile_t tile)
 {
-    werase(win);
-    box(win,0,0);
+    switch (tile) {
+        case TILE_EMPTY:
+            return ' ';
+        case TILE_HARD_WALL:
+            return '#';
+        case TILE_SOFT_BLOCK:
+            return '+';
+        default:
+            return '?';
+    }
+}
+
+static void draw_map(WINDOW* map_wind, const client_game_t* game)
+{
+    werase(map_wind);
+    box(map_wind,0,0);
+
+    for (uint16_t r=0;r<game->rows;r++) {
+        for (uint16_t c=0;c<game->cols;c++) {
+            uint16_t cell=make_cell_index(r,c,game->cols);
+            mvwaddch(map_wind,r+1,c+1,tile_to_char(game->tiles[cell]));
+        }
+    }
+
+    wrefresh(map_wind);
+}
+
+static void redraw_game(WINDOW* win, const client_game_t* game)
+{
+    draw_map(win,game);
 
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (!players[i].known) continue;
-        mvwaddch(win, players[i].row, players[i].col, (chtype)('H'+i));
+        if (!game->players[i].known) continue;
+        mvwaddch(win,game->players[i].row+1,game->players[i].col+1,(chtype)('H'+i));
     }
 
     wrefresh(win);
 }
 
-static int recv_player_move_payload(int fd, WINDOW* win, client_player_t players[MAX_PLAYERS], uint16_t cols)
+static int recv_map_payload(int fd, client_game_t* game)
+{
+    uint16_t rows;
+    uint16_t cols;
+
+    if (recv_u16_be(fd, &rows)<0) return -1;
+    if (recv_u16_be(fd, &cols)<0) return -1;
+    if (rows==0 || cols==0) return -1;
+
+    tile_t* tiles=malloc((size_t)rows*cols*sizeof(*tiles));
+    if (!tiles) return -1;
+
+    for (uint32_t i=0;i<(uint32_t)rows*cols;i++) {
+        uint8_t tile;
+        if (recv_u8(fd, &tile)<0) {
+            free(tiles);
+            return -1;
+        }
+
+        if (tile>TILE_SOFT_BLOCK) {
+            free(tiles);
+            return -1;
+        }
+
+        tiles[i]=(tile_t)tile;
+    }
+
+    free(game->tiles);
+    game->rows=rows;
+    game->cols=cols;
+    game->tiles=tiles;
+
+    return 0;
+}
+
+static int recv_map(int fd, client_game_t* game)
+{
+    msg_header_t header;
+
+    if (get_header(fd, &header)<0) return -1;
+    if (header.msg_type!=MSG_MAP) return -1;
+
+    return recv_map_payload(fd,game);
+}
+
+static int recv_player_move_payload(int fd, WINDOW* win, client_game_t* game)
 {
     uint8_t player_id;
     uint16_t cell_index;
@@ -141,25 +209,33 @@ static int recv_player_move_payload(int fd, WINDOW* win, client_player_t players
 
     if (recv_u8(fd, &player_id) < 0) return -1;
     if (recv_u16_be(fd, &cell_index) < 0) return -1;
-    if (player_id>=MAX_PLAYERS || cols==0) return -1;
+    if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
 
-    row=cell_index/cols;
-    col=cell_index%cols;
-    players[player_id].known=true;
-    players[player_id].row=row;
-    players[player_id].col=col;
+    row=cell_index/game->cols;
+    col=cell_index%game->cols;
+    if (row>=game->rows || col>=game->cols) return -1;
 
-    redraw_players(win,players);
+    game->players[player_id].known=true;
+    game->players[player_id].row=row;
+    game->players[player_id].col=col;
+
     return 0;
 }
 
 // PROCESS SERVER EVENTS HERE
-static int process_server_message(int fd, WINDOW* win, client_player_t players[MAX_PLAYERS], uint16_t cols)
+static int process_server_message(int fd, WINDOW* win, client_game_t* game)
 {
     msg_header_t header;
     if (get_header(fd, &header)<0) return -1;
     switch (header.msg_type) {
-        case MSG_MOVED: return recv_player_move_payload(fd,win,players,cols);
+        case MSG_MAP:
+            if (recv_map_payload(fd,game)<0) return -1;
+            redraw_game(win,game);
+            return 0;
+        case MSG_MOVED:
+            if (recv_player_move_payload(fd,win,game)!=0) return -1;
+            redraw_game(win,game);
+            return 0;
         default: return -1;
     }
 }
@@ -171,13 +247,6 @@ static int send_leave(int fd)
     header.sender_id=SERVER_TARGET_ID;
     header.target_id=SERVER_TARGET_ID;
     return send_header(fd, &header);
-}
-
-void draw_map(WINDOW* mainwind, WINDOW* map_wind) {
-    (void)mainwind;
-    werase(map_wind);
-    box(map_wind, 0, 0);
-    wrefresh(map_wind);
 }
 
 void end_wind(WINDOW* mainwind, WINDOW* map_wind) {
@@ -197,6 +266,8 @@ int main(int argc, char** argv)
     if (argc>1) snprintf(player_name,sizeof(player_name),"%s",argv[1]);
     else snprintf(player_name,sizeof(player_name),"Player-%ld",(long)getpid());
 
+    client_game_t game;
+    memset(&game,0,sizeof(game));
 
     int fd=connect_to_server("127.0.0.1", 1727);
     if (fd<0) {
@@ -216,31 +287,38 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    if (recv_map(fd,&game) < 0) {
+        fprintf(stderr, "recv MAP failed\n");
+        close(fd);
+        free(game.tiles);
+        return 1;
+    }
+
     WINDOW* mainwind;
     WINDOW* map_wind;
     int ch = 0, dir = -1;
-    client_player_t players[MAX_PLAYERS];
     if ((mainwind = initscr()) == NULL) {
         fprintf(stderr, "Error initialising ncurses.\n");
         close(fd);
+        free(game.tiles);
         return 1;
     }
-    int map_width = 30, map_height = 13;
-    memset(players,0,sizeof(players));
-    map_wind = subwin(mainwind, map_height, map_width, 0, 0);
+
+    map_wind = subwin(mainwind, game.rows+2, game.cols+2, 0, 0);
     if (!map_wind) {
         endwin();
         fprintf(stderr, "Error creating map window.\n");
         close(fd);
+        free(game.tiles);
         return 1;
     }
     noecho();
     curs_set(0);
     keypad(mainwind, TRUE);
     nodelay(mainwind, TRUE);
-    draw_map(mainwind, map_wind);
+    redraw_game(map_wind,&game);
 
-    // Check if the server has sent something, if yes, then we render
+    // Check continously if the server has sent something, if yes, then we render
     while(1) {
         struct pollfd socket_poll;
         socket_poll.fd=fd;
@@ -253,6 +331,7 @@ int main(int argc, char** argv)
             end_wind(mainwind, map_wind);
             fprintf(stderr, "poll failed\n");
             close(fd);
+            free(game.tiles);
             return 1;
         }
 
@@ -261,14 +340,16 @@ int main(int argc, char** argv)
                 end_wind(mainwind, map_wind);
                 fprintf(stderr, "server connection closed\n");
                 close(fd);
+                free(game.tiles);
                 return 1;
             }
 
             if (socket_poll.revents & POLLIN) {
-                if (process_server_message(fd, map_wind, players, (uint16_t)map_width) < 0) {
+                if (process_server_message(fd, map_wind, &game) < 0) {
                     end_wind(mainwind, map_wind);
                     fprintf(stderr, "recv server message failed\n");
                     close(fd);
+                    free(game.tiles);
                     return 1;
                 }
             }
@@ -295,6 +376,7 @@ int main(int argc, char** argv)
                 send_leave(fd);
                 end_wind(mainwind, map_wind);
                 close(fd);
+                free(game.tiles);
                 return 0;
             default:
                 continue;
@@ -304,6 +386,7 @@ int main(int argc, char** argv)
             end_wind(mainwind, map_wind);
             fprintf(stderr, "send move failed\n");
             close(fd);
+            free(game.tiles);
             return 1;
         }
 
@@ -314,9 +397,11 @@ int main(int argc, char** argv)
     if (send_leave(fd) < 0) {
         fprintf(stderr, "send LEAVE failed\n");
         close(fd);
+        free(game.tiles);
         return 1;
     }
 
     close(fd);
+    free(game.tiles);
     return 0;
 }

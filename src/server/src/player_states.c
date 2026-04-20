@@ -1,6 +1,7 @@
 #define _DEFAULT_SOURCE
 #include "../include/player_states.h"
 #include "../include/server.h"
+#include "../../shared/include/map_loader.h"
 #include "../../shared/include/net_utils.h"
 
 #include <pthread.h>
@@ -15,11 +16,11 @@ int send_move(server_t* server, uint8_t slot_id)
 
     pthread_mutex_lock(&server->state.mutex);
     player_slot_t* slot=&server->state.players[slot_id];
-    if (!slot->alive || !slot->connected || server->state.cols==0) {
+    if (!slot->alive || !slot->connected || server->state.map.cols==0) {
         pthread_mutex_unlock(&server->state.mutex);
         return -1;
     }
-    uint16_t cell_index=make_cell_index(slot->p.row, slot->p.col, server->state.cols);
+    uint16_t cell_index=make_cell_index(slot->p.row, slot->p.col, server->state.map.cols);
 
     uint8_t client_count=0;
     int client_fd[MAX_PLAYERS];
@@ -55,7 +56,7 @@ void send_move_broadcast(server_t* server, bool* moved_players)
     }
 }
 
-void handle_action_move(server_t* server,player_slot_t* slot,bool* moved_players,action_t action)
+void handle_action_move(server_t* server,player_slot_t* slot,action_t action)
 {
     int x=slot->p.col,y=slot->p.row;
     switch (action.direction) {
@@ -74,11 +75,12 @@ void handle_action_move(server_t* server,player_slot_t* slot,bool* moved_players
         default: break;
     }
 
-    if (y>0 && x>0 && y<server->state.rows-1 && x<server->state.cols-1) {
-        slot->p.row=y;
-        slot->p.col=x;
+    if (y>=0 && x>=0 && y<server->state.map.rows && x<server->state.map.cols) {
+        if (map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x)) {
+            slot->p.row=y;
+            slot->p.col=x;
+        }
     }
-    moved_players[slot->id]=true;
 }
 
 int handle_move(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)

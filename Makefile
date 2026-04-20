@@ -14,12 +14,14 @@ SERVER_SRCS := \
 	src/server/src/server.c \
 	src/server/src/game_state.c \
 	src/server/src/player_states.c \
+	src/shared/src/map_loader.c \
 	src/shared/src/net_utils.c
 
 SERVER_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SERVER_SRCS))
 
 CLIENT_SRCS := \
 	src/client/src/main.c \
+	src/shared/src/map_loader.c \
 	src/shared/src/net_utils.c
 
 CLIENT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CLIENT_SRCS))

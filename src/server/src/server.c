@@ -164,10 +164,12 @@ static void* tick_thread_loop(void* arg)
             if (action.type==ACTION_MOVE) {
                 player_slot_t* slot=&server->state.players[action.player_id];
                 if (!slot->connected || !slot->alive) continue;
-                handle_action_move(server,slot,moved_players,action);
+                handle_action_move(server,slot,action);
+                moved_players[slot->id]=true;
             }
-            // OTHER ACTIONS HERE
-            // TODO: PLACE BOMB ACTION
+            else if (action.type==ACTION_BOMB) {
+                // TODO: BOMB ACTION
+            }
         }
 
         // Simulation here
@@ -184,7 +186,7 @@ static void* tick_thread_loop(void* arg)
     return NULL;
 }
 
-void init_slot(player_slot_t* slot,int client_fd,uint8_t id)
+void init_slot(player_slot_t* slot,int client_fd,uint8_t id,map_t* map)
 {
     slot->connected=true;
     slot->alive=true;
@@ -195,8 +197,16 @@ void init_slot(player_slot_t* slot,int client_fd,uint8_t id)
     slot->p.id=id;
     slot->p.alive=true;
     slot->p.ready=false;
-    slot->p.row=1;
-    slot->p.col=(uint16_t)(1+id);
+
+    if (id<map->spawn_count && map->spawn_cells[id]!=UINT16_MAX) {
+        uint16_t cell=map->spawn_cells[id];
+        slot->p.row=cell/map->cols;
+        slot->p.col=cell%map->cols;
+    }
+    else {
+        slot->p.row=1;
+        slot->p.col=(uint16_t)(1+id);
+    }
 }
 
 static void free_player_slot(server_t* server, uint8_t slot_id)
@@ -276,6 +286,25 @@ static bool check_unique_name(server_t* server,char* name, uint8_t slot_id)
     return true;
 }
 
+static int send_map(int client_fd, uint8_t target_id, const map_t* map)
+{
+    msg_header_t header;
+
+    if (!map || !map->tiles) return -1;
+
+    header.msg_type = MSG_MAP;
+    header.sender_id = SERVER_TARGET_ID;
+    header.target_id = target_id;
+
+    if (send_header(client_fd, &header)<0) return -1;
+    if (send_u16_be(client_fd, map->rows)<0) return -1;
+    if (send_u16_be(client_fd, map->cols)<0) return -1;
+
+    for (uint32_t i=0;i<(uint32_t)map->rows*map->cols;i++) if (send_u8(client_fd, (uint8_t)map->tiles[i])<0) return -1;
+
+    return 0;
+}
+
 static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)
 {
     msg_hello_t msg;
@@ -300,6 +329,7 @@ static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_heade
     pthread_mutex_unlock(&server->state.mutex);
     if (!r) return -1;
     if (send_welcome(server,client_fd,slot_id)!=0) return -1;
+    if (send_map(client_fd,slot_id,&server->state.map)!=0) return -1;
     for (uint8_t i=0;i<connected_count;i++) {
         if (send_move(server,connected_players[i])!=0) return -1;
     }
@@ -371,7 +401,7 @@ int run_server(server_t* server)
             player_slot_t* curr_slot=&server->state.players[i];
             // Curr slot is free
             if (!curr_slot->connected) {
-                init_slot(curr_slot,client_fd,i);
+                init_slot(curr_slot,client_fd,i,&server->state.map);
                 server->state.player_count++;
                 slot_found=true;
                 break;

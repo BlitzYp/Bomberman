@@ -149,7 +149,7 @@ static void redraw_game(WINDOW* win, const client_game_t* game)
 
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         if (!game->players[i].known) continue;
-        mvwaddch(win,game->players[i].row+1,game->players[i].col+1,(chtype)('H'+i));
+        mvwaddch(win,game->players[i].row+1,game->players[i].col+1,(chtype)('1'+i));
     }
 
     wrefresh(win);

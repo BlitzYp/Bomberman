@@ -250,7 +250,7 @@ static int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
         player_slot_t* slot=&server->state.players[i];
         if (!slot->connected) continue;
         players[player_count].id=slot->id;
-        players[player_count].ready=slot->ready?1:0;
+        players[player_count].ready=slot->ready ? 1 : 0;
         memcpy(players[player_count].name,slot->name,MAX_NAME_LEN);
         player_count++;
     }
@@ -300,7 +300,8 @@ static int send_map(int client_fd, uint8_t target_id, const map_t* map)
     if (send_u16_be(client_fd, map->rows)<0) return -1;
     if (send_u16_be(client_fd, map->cols)<0) return -1;
 
-    for (uint32_t i=0;i<(uint32_t)map->rows*map->cols;i++) if (send_u8(client_fd, (uint8_t)map->tiles[i])<0) return -1;
+    for (uint32_t i=0;i<(uint32_t)map->rows*map->cols;i++)
+        if (send_u8(client_fd, (uint8_t)map->tiles[i])<0) return -1;
 
     return 0;
 }
@@ -330,6 +331,7 @@ static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_heade
     if (!r) return -1;
     if (send_welcome(server,client_fd,slot_id)!=0) return -1;
     if (send_map(client_fd,slot_id,&server->state.map)!=0) return -1;
+
     for (uint8_t i=0;i<connected_count;i++) {
         if (send_move(server,connected_players[i])!=0) return -1;
     }

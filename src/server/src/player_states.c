@@ -76,7 +76,17 @@ void handle_action_move(server_t* server,player_slot_t* slot,action_t action)
     }
 
     if (y>=0 && x>=0 && y<server->state.map.rows && x<server->state.map.cols) {
-        if (map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x)) {
+        // Check collision with other players
+        bool valid=true;
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            player_slot_t* p_slot=&server->state.players[i];
+            if (!p_slot->connected || !p_slot->alive || p_slot->id==slot->id) continue;
+            if (p_slot->p.row==y && p_slot->p.col==x) {
+                valid=false;
+                break;
+            }
+        }
+        if (map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x) && valid) {
             slot->p.row=y;
             slot->p.col=x;
         }

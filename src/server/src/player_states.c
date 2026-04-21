@@ -1,3 +1,4 @@
+#include <cmath>
 #define _DEFAULT_SOURCE
 #include "../include/player_states.h"
 #include "../include/server.h"
@@ -169,6 +170,17 @@ void send_bomb_broadcast(server_t* server, bool* bomb_placed_players)
     }
 }
 
+void send_exploding_broadcast(server_t* server, bool* exploding_bombs)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (exploding_bombs[i]) {
+            // log err
+            printf("Error sending bomb data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+            bomb_explode_start(server,&server->state.bombs[i]);
+        }
+    }
+}
+
 void handle_action_bomb(server_t* server,bomb_t* slot,action_t action)
 {
     // int x=slot->col,y=slot->row;
@@ -183,6 +195,8 @@ void handle_action_bomb(server_t* server,bomb_t* slot,action_t action)
             slot->col=x;
             slot->row=y;
             slot->owner_id=action.player_id;
+            slot->radius=server->state.players[action.player_id].p.bomb_radius;
+            slot->timer_ticks=server->state.players[action.player_id].p.bomb_timer_ticks;
         }
     }
 }

@@ -153,6 +153,7 @@ static void* tick_thread_loop(void* arg)
         usleep(sleep_time);
         bool moved_players[MAX_PLAYERS]={0};
         bool bomb_placed_players[MAX_PLAYERS]={0};
+        bool exploding_bombs[MAX_PLAYERS]={0};
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
@@ -190,7 +191,7 @@ static void* tick_thread_loop(void* arg)
         // - resolve explosions
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
             if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks==0) {
-                bomb_explode_start(server,&server->state.bombs[i]);
+                exploding_bombs[i]=true;
                 server->state.bombs[i].active=0;
             }
         }
@@ -216,6 +217,11 @@ void init_slot(player_slot_t* slot,int client_fd,uint8_t id,map_t* map)
     slot->p.id=id;
     slot->p.alive=true;
     slot->p.ready=false;
+
+    slot->p.bomb_count=1;
+    slot->p.bomb_radius=1;
+    slot->p.bomb_timer_ticks=3*TICKS_PER_SECOND;
+    slot->p.speed=3;
 
     if (id<map->spawn_count && map->spawn_cells[id]!=UINT16_MAX) {
         uint16_t cell=map->spawn_cells[id];

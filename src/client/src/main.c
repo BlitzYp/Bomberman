@@ -239,52 +239,52 @@ static int recv_player_move_payload(int fd, WINDOW* win, client_game_t* game)
     return 0;
 }
 
-// static int recv_player_bomb_payload(int fd, WINDOW* win, client_game_t* game)
-// {
-//     uint8_t player_id;
-//     uint16_t cell_index;
-//     uint16_t row;
-//     uint16_t col;
-//     printf("bomb");
+static int recv_player_bomb_payload(int fd, WINDOW* win, client_game_t* game)
+{
+    uint8_t player_id;
+    uint16_t cell_index;
+    uint16_t row;
+    uint16_t col;
+    printf("bomb");
 
-//     if (recv_u8(fd, &player_id) < 0) return -1;
-//     if (recv_u16_be(fd, &cell_index) < 0) return -1;
-//     if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
+    if (recv_u8(fd, &player_id) < 0) return -1;
+    if (recv_u16_be(fd, &cell_index) < 0) return -1;
+    if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
 
-//     row=cell_index/game->cols;
-//     col=cell_index%game->cols;
-//     if (row>=game->rows || col>=game->cols) return -1;
+    row=cell_index/game->cols;
+    col=cell_index%game->cols;
+    if (row>=game->rows || col>=game->cols) return -1;
 
-//     game->tiles[cell_index]=TILE_BOMB;
-//     // game->tiles[player_id].known=true;
-//     // game->tiles[player_id].row=row;
-//     // game->players[player_id].col=col;
+    game->tiles[cell_index]=TILE_BOMB;
+    // game->tiles[player_id].known=true;
+    // game->tiles[player_id].row=row;
+    // game->players[player_id].col=col;
 
-//     return 0;
-// }
+    return 0;
+}
 
-// static int recv_bomb_start_payload(int fd, WINDOW* win, client_game_t* game)
-// {
-//     uint8_t player_id;
-//     uint16_t cell_index;
-//     uint16_t row;
-//     uint16_t col;
+static int recv_bomb_start_payload(int fd, WINDOW* win, client_game_t* game)
+{
+    uint8_t player_id;
+    uint16_t cell_index;
+    uint16_t row;
+    uint16_t col;
 
-//     if (recv_u8(fd, &player_id) < 0) return -1;
-//     if (recv_u16_be(fd, &cell_index) < 0) return -1;
-//     if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
+    if (recv_u8(fd, &player_id) < 0) return -1;
+    if (recv_u16_be(fd, &cell_index) < 0) return -1;
+    if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
 
-//     row=cell_index/game->cols;
-//     col=cell_index%game->cols;
-//     if (row>=game->rows || col>=game->cols) return -1;
+    row=cell_index/game->cols;
+    col=cell_index%game->cols;
+    if (row>=game->rows || col>=game->cols) return -1;
 
-//     game->tiles[cell_index]=TILE_BOMB_EXPLODE;
-//     // game->tiles[player_id].known=true;
-//     // game->tiles[player_id].row=row;
-//     // game->players[player_id].col=col;
+    game->tiles[cell_index]=TILE_BOMB_EXPLODE;
+    // game->tiles[player_id].known=true;
+    // game->tiles[player_id].row=row;
+    // game->players[player_id].col=col;
 
-//     return 0;
-// }
+    return 0;
+}
 
 // PROCESS SERVER EVENTS HERE
 static int process_server_message(int fd, WINDOW* win, client_game_t* game)
@@ -292,7 +292,7 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
     msg_header_t header;
     // printf("about head");
     if (get_header(fd, &header)<0) return -1;
-    // printf("got head");
+    printf("got head %d", header.msg_type);
     switch (header.msg_type) {
         case MSG_MAP:
             printf("rec map");
@@ -306,13 +306,13 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
             return 0;
         case MSG_BOMB:
             printf("rec bomb");
-            // if (recv_player_bomb_payload(fd,win,game)!=0) return -1;
-            // redraw_game(win,game);
+            if (recv_player_bomb_payload(fd,win,game)!=0) return -1;
+            redraw_game(win,game);
             return 0;
         case MSG_EXPLOSION_START:
             printf("rec bomb start");
-            // if (recv_bomb_start_payload(fd,win,game)!=0) return -1;
-            // redraw_game(win,game);
+            if (recv_bomb_start_payload(fd,win,game)!=0) return -1;
+            redraw_game(win,game);
             return 0;
         default: return -1;
     }
@@ -470,13 +470,15 @@ int main(int argc, char** argv)
                 continue;
         }
 
-        if (send_player_move(fd, (uint8_t)dir) < 0) {
-            end_wind(mainwind, map_wind);
-            fprintf(stderr, "send move failed\n");
-            close(fd);
-            free(game.tiles);
-            return 1;
-        }
+        if (dir!=-1) {
+            if (send_player_move(fd, (uint8_t)dir) < 0) {
+                end_wind(mainwind, map_wind);
+                fprintf(stderr, "send move failed\n");
+                close(fd);
+                free(game.tiles);
+                return 1;
+            }
+        }    
     }
 
     end_wind(mainwind, map_wind);

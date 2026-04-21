@@ -1,4 +1,3 @@
-#include <cmath>
 #define _DEFAULT_SOURCE
 #include "../include/player_states.h"
 #include "../include/server.h"
@@ -173,10 +172,21 @@ void send_bomb_broadcast(server_t* server, bool* bomb_placed_players)
 void send_exploding_broadcast(server_t* server, bool* exploding_bombs)
 {
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (exploding_bombs[i]) {
+        if (!exploding_bombs[i]) continue;
+        if (send_explode_start(server,&server->state.bombs[i])!=0) {
             // log err
-            printf("Error sending bomb data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
-            bomb_explode_start(server,&server->state.bombs[i]);
+            printf("Error sending explode start data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+        }
+    }
+}
+
+void send_end_explode_broadcast(server_t* server, bool* end_exploding_bombs)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!end_exploding_bombs[i]) continue;
+        if (send_explode_end(server,&server->state.bombs[i])!=0) {
+            // log err
+            printf("Error sending explode end data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
         }
     }
 }
@@ -191,6 +201,7 @@ void handle_action_bomb(server_t* server,bomb_t* slot,action_t action)
     if (y>=0 && x>=0 && y<server->state.map.rows && x<server->state.map.cols) {
         // Check collision with other players
         if (map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x)) {
+            server->state.map.tiles[action.cell_index]=TILE_BOMB;
             slot->active=1;
             slot->col=x;
             slot->row=y;
@@ -231,11 +242,12 @@ int handle_bomb(server_t* server,int client_fd,uint8_t slot_id,msg_header_t head
     return 0;
 }
 
-int bomb_explode_start(server_t* server,bomb_t* slot)
+int send_explode_start(server_t* server,bomb_t* slot)
 {
-    msg_header_t header;
+    msg_explosion_t explosion;
 
     pthread_mutex_lock(&server->state.mutex);
+    uint16_t cell_index=make_cell_index(slot->row, slot->col, server->state.map.cols);
     uint8_t client_count=0;
     int client_fd[MAX_PLAYERS];
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
@@ -243,14 +255,138 @@ int bomb_explode_start(server_t* server,bomb_t* slot)
         if (!p_slot->connected) continue;
         client_fd[client_count++]=p_slot->socket_fd;
     }
+
+    // if (server->state.map.tiles[cell_index]==TILE_EMPTY) {
+    if (true) {
+        server->state.map.tiles[cell_index]=TILE_BOMB_EXPLODE;
+        int index=0, radius=slot->radius;
+        for (int i = 1; i < radius+1; i++) {
+            index=cell_index+i;
+            if (cell_index/server->state.map.cols != index/server->state.map.cols) break;
+            if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
+                server->state.map.tiles[index]=TILE_BOMB_EXPLODE;
+            } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
+                break;
+            }
+        }
+        for (int i = 1; i < radius+1; i++) {
+            index=cell_index+i*server->state.map.cols;
+            if (cell_index%server->state.map.cols != index%server->state.map.cols) break;
+            if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
+                server->state.map.tiles[index]=TILE_BOMB_EXPLODE;    
+            } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
+                break;    
+            }
+        }
+        for (int i = -1; i > (-1*(radius+1)); i--) {
+            index=cell_index+i;
+            if (cell_index/server->state.map.cols != index/server->state.map.cols) break;
+            if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
+                server->state.map.tiles[index]=TILE_BOMB_EXPLODE;    
+            } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
+                break;    
+            }
+        }
+        for (int i = -1; i > (-1*(radius+1)); i--) {
+            index=cell_index+i*server->state.map.cols;
+            if (cell_index%server->state.map.cols != index%server->state.map.cols) break;
+            if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
+                server->state.map.tiles[index]=TILE_BOMB_EXPLODE;    
+            } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
+                break;
+            }
+        }
+    }
+    
+
     pthread_mutex_unlock(&server->state.mutex);
 
-    header.msg_type=MSG_EXPLOSION_START;
-    header.sender_id=slot->owner_id;
-    header.target_id=BROADCAST_TARGET_ID;
+    // header.msg_type=MSG_EXPLOSION_START;
+    // header.sender_id=slot->owner_id;
+    // header.target_id=BROADCAST_TARGET_ID;
+    explosion.header.msg_type=MSG_EXPLOSION_START;
+    explosion.header.sender_id=slot->owner_id;
+    explosion.header.target_id=BROADCAST_TARGET_ID;
+    explosion.cell_index=cell_index;
+    explosion.radius=slot->radius;
 
     for (uint8_t i=0;i<client_count;i++) {
-        if (send_header(client_fd[i],&header)<0) return -1;
+        if (send_header(client_fd[i],&explosion.header)<0) return -1;
+        if (send_u8(client_fd[i],explosion.radius)<0) return -1;
+        if (send_u16_be(client_fd[i],explosion.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_explode_end(server_t* server,bomb_t* slot)
+{
+    msg_explosion_t explosion;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint16_t cell_index=make_cell_index(slot->row, slot->col, server->state.map.cols);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* p_slot=&server->state.players[i];
+        if (!p_slot->connected) continue;
+        client_fd[client_count++]=p_slot->socket_fd;
+    }
+
+    // if (server->state.map.tiles[cell_index]==TILE_BOMB_EXPLODE) {
+    if (true) {
+        server->state.map.tiles[cell_index]=TILE_EMPTY;
+        int index=1;
+        while(true)
+        {
+            if (server->state.map.tiles[cell_index+index]==TILE_BOMB_EXPLODE) {
+                server->state.map.tiles[cell_index+index]=TILE_EMPTY;
+                index++;
+            }
+            if (server->state.map.tiles[cell_index+index]!=TILE_BOMB_EXPLODE) break;
+        }
+        index=-1;
+        while(true)
+        {
+            if (server->state.map.tiles[cell_index+index]==TILE_BOMB_EXPLODE) {
+                server->state.map.tiles[cell_index+index]=TILE_EMPTY;
+                index--;
+            }
+            if (server->state.map.tiles[cell_index+index]!=TILE_BOMB_EXPLODE) break;
+        }
+        index=1;
+        while(true)
+        {
+            if (server->state.map.tiles[cell_index+index*server->state.map.cols]==TILE_BOMB_EXPLODE) {
+                server->state.map.tiles[cell_index+index*server->state.map.cols]=TILE_EMPTY;
+                index++;
+            }
+            if (server->state.map.tiles[cell_index+index*server->state.map.cols]!=TILE_BOMB_EXPLODE) break;
+        }
+        index=-1;
+        while(true)
+        {
+            if (server->state.map.tiles[cell_index+index*server->state.map.cols]==TILE_BOMB_EXPLODE) {
+                server->state.map.tiles[cell_index+index*server->state.map.cols]=TILE_EMPTY;
+                index--;
+            }
+            if (server->state.map.tiles[cell_index+index*server->state.map.cols]!=TILE_BOMB_EXPLODE) break;
+        }
+    }
+
+    pthread_mutex_unlock(&server->state.mutex);
+
+    // header.msg_type=MSG_EXPLOSION_START;
+    // header.sender_id=slot->owner_id;
+    // header.target_id=BROADCAST_TARGET_ID;
+    explosion.header.msg_type=MSG_EXPLOSION_END;
+    explosion.header.sender_id=slot->owner_id;
+    explosion.header.target_id=BROADCAST_TARGET_ID;
+    explosion.cell_index=cell_index;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&explosion.header)<0) return -1;
+        if (send_u16_be(client_fd[i],explosion.cell_index)<0) return -1;
     }
 
     return 0;

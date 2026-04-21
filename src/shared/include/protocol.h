@@ -37,4 +37,12 @@ typedef struct {
     uint16_t cell_index;
 } msg_bomb_t;
 
+typedef struct {
+    msg_header_t header;
+    uint8_t player_id;
+    uint16_t cell_index;
+    uint8_t radius;
+} msg_explosion_t;
+
+
 #endif

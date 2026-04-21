@@ -154,6 +154,7 @@ static void* tick_thread_loop(void* arg)
         bool moved_players[MAX_PLAYERS]={0};
         bool bomb_placed_players[MAX_PLAYERS]={0};
         bool exploding_bombs[MAX_PLAYERS]={0};
+        bool end_exploding_bombs[MAX_PLAYERS]={0};
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
@@ -164,7 +165,6 @@ static void* tick_thread_loop(void* arg)
         action_t action;
         while (dequeue_action(&server->state,&action)==0) {
             if (action.type==ACTION_MOVE) {
-                printf("action move");
                 player_slot_t* slot=&server->state.players[action.player_id];
                 if (!slot->connected || !slot->alive) continue;
                 handle_action_move(server,slot,action);
@@ -193,6 +193,9 @@ static void* tick_thread_loop(void* arg)
             if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks==0) {
                 exploding_bombs[i]=true;
                 server->state.bombs[i].active=0;
+                server->state.bombs[i].timer_ticks++;
+            } else if (!server->state.bombs[i].active && server->state.bombs[i].timer_ticks==1) {
+                end_exploding_bombs[i]=true;
             }
         }
         // - detect deaths
@@ -202,6 +205,8 @@ static void* tick_thread_loop(void* arg)
         // Send move message to all here to avoid deadlock situation
         send_move_broadcast(server,moved_players);
         send_bomb_broadcast(server,bomb_placed_players);
+        send_exploding_broadcast(server,exploding_bombs);
+        send_end_explode_broadcast(server,end_exploding_bombs);
     }
     return NULL;
 }

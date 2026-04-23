@@ -2,7 +2,10 @@
 #include "../include/server.h"
 #include "../../shared/include/protocol.h"
 #include "../../shared/include/net_utils.h"
-#include "../include/player_states.h"
+#include "../include/player_actions.h"
+#include "../include/server_messages.h"
+#include "../include/bombs.h"
+#include "../include/lobby.h"
 
 #include <ncurses.h>
 #include <stdbool.h>
@@ -180,24 +183,16 @@ static void* tick_thread_loop(void* arg)
             }
         }
 
-        // Simulation here
-        // TODO: authoritative game simulation:
-        // - update bomb timers
+        // - update bomb timer
+        update_bomb_timers(server);
+
+        // -- resolve explosions
+        collect_bomb_events(server,exploding_bombs,end_exploding_bombs);
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks>0) {
-                server->state.bombs[i].timer_ticks--;
-            }
+            if (exploding_bombs[i]) apply_explosion_start(server,&server->state.bombs[i]);
+            if (end_exploding_bombs[i]) apply_explosion_end(server,&server->state.bombs[i]);
         }
-        // - resolve explosions
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks==0) {
-                exploding_bombs[i]=true;
-                server->state.bombs[i].active=0;
-                server->state.bombs[i].timer_ticks++;
-            } else if (!server->state.bombs[i].active && server->state.bombs[i].timer_ticks==1) {
-                end_exploding_bombs[i]=true;
-            }
-        }
+
         // - detect deaths
         // - check win condition
         pthread_mutex_unlock(&server->state.mutex);
@@ -258,116 +253,6 @@ static void cleanup(server_t* server,int client_fd,uint8_t slot_id)
 {
     close(client_fd);
     free_player_slot(server,slot_id);
-}
-
-static int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
-{
-    typedef struct {
-        uint8_t id;
-        uint8_t ready;
-        char name[MAX_NAME_LEN];
-    } player_info;
-
-    msg_header_t header;
-    uint8_t status;
-    char server_id[MAX_CLIENT_ID_LEN]="server";
-    player_info players[MAX_PLAYERS];
-    uint8_t player_count=0;
-
-    pthread_mutex_lock(&server->state.mutex);
-    status=(uint8_t)server->state.status;
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        player_slot_t* slot=&server->state.players[i];
-        if (!slot->connected) continue;
-        players[player_count].id=slot->id;
-        players[player_count].ready=slot->ready ? 1 : 0;
-        memcpy(players[player_count].name,slot->name,MAX_NAME_LEN);
-        player_count++;
-    }
-    pthread_mutex_unlock(&server->state.mutex);
-
-    header.msg_type=MSG_WELCOME;
-    header.sender_id=slot_id;
-    header.target_id=slot_id;
-
-    if (send_header(client_fd,&header)<0) return -1;
-    if (write_exact(client_fd, server_id, MAX_CLIENT_ID_LEN)<0) return -1;
-    if (send_u8(client_fd,status)<0) return -1;
-    if (send_u8(client_fd,player_count)<0) return -1;
-
-    for (uint8_t i=0;i<player_count;i++) {
-        if (send_u8(client_fd,players[i].id)<0) return -1;
-        if (send_u8(client_fd,players[i].ready)<0) return -1;
-        if (write_exact(client_fd, players[i].name,MAX_NAME_LEN)<0) return -1;
-    }
-
-    return 0;
-}
-
-static bool check_unique_name(server_t* server,char* name, uint8_t slot_id)
-{
-    if (!name || !server) return -1;
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        player_slot_t* player=&server->state.players[i];
-        if (!player->connected || i==slot_id) continue;
-        char* check=player->name;
-        if (strncmp(name,check,MAX_NAME_LEN)==0) return false;
-    }
-    return true;
-}
-
-static int send_map(int client_fd, uint8_t target_id, const map_t* map)
-{
-    msg_header_t header;
-
-    if (!map || !map->tiles) return -1;
-
-    header.msg_type = MSG_MAP;
-    header.sender_id = SERVER_TARGET_ID;
-    header.target_id = target_id;
-
-    if (send_header(client_fd, &header)<0) return -1;
-    if (send_u16_be(client_fd, map->rows)<0) return -1;
-    if (send_u16_be(client_fd, map->cols)<0) return -1;
-
-    for (uint32_t i=0;i<(uint32_t)map->rows*map->cols;i++)
-        if (send_u8(client_fd, (uint8_t)map->tiles[i])<0) return -1;
-
-    return 0;
-}
-
-static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)
-{
-    msg_hello_t msg;
-    uint8_t connected_count=0;
-    uint8_t connected_players[MAX_PLAYERS];
-
-    msg.header=header;
-    if (read_exact(client_fd,msg.client_id,MAX_CLIENT_ID_LEN)<0) return -1;
-    if (read_exact(client_fd,msg.player_name,MAX_NAME_LEN)<0) return -1;
-
-    pthread_mutex_lock(&server->state.mutex);
-    // TODO: Implement check if the name is valid
-    bool r=check_unique_name(server, msg.player_name,slot_id);
-    if (r) {
-        memcpy(server->state.players[slot_id].name,msg.player_name,MAX_NAME_LEN);
-        server->state.players[slot_id].name[MAX_NAME_LEN]='\0';
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (!server->state.players[i].connected) continue;
-            connected_players[connected_count++]=i;
-        }
-    }
-    pthread_mutex_unlock(&server->state.mutex);
-    if (!r) return -1;
-    if (send_welcome(server,client_fd,slot_id)!=0) return -1;
-    if (send_map(client_fd,slot_id,&server->state.map)!=0) return -1;
-
-    for (uint8_t i=0;i<connected_count;i++) {
-        if (send_move(server,connected_players[i])!=0) return -1;
-    }
-
-    printf("HELLO FROM %s SLOT %u\n",msg.player_name,slot_id);
-    return 0;
 }
 
 // PROCESS MAIN CLIENT THREAD HERE

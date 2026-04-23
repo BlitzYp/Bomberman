@@ -1,0 +1,249 @@
+#define _DEFAULT_SOURCE
+#include "../include/server_messages.h"
+#include "../../shared/include/net_utils.h"
+
+#include <pthread.h>
+#include <stdio.h>
+#include <string.h>
+
+int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
+{
+    typedef struct {
+        uint8_t id;
+        uint8_t ready;
+        char name[MAX_NAME_LEN];
+    } player_info;
+
+    msg_header_t header;
+    uint8_t status;
+    char server_id[MAX_CLIENT_ID_LEN]="server";
+    player_info players[MAX_PLAYERS];
+    uint8_t player_count=0;
+
+    pthread_mutex_lock(&server->state.mutex);
+    status=(uint8_t)server->state.status;
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        players[player_count].id=slot->id;
+        players[player_count].ready=slot->ready ? 1 : 0;
+        memcpy(players[player_count].name,slot->name,MAX_NAME_LEN);
+        player_count++;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    header.msg_type=MSG_WELCOME;
+    header.sender_id=slot_id;
+    header.target_id=slot_id;
+
+    if (send_header(client_fd,&header)<0) return -1;
+    if (write_exact(client_fd, server_id, MAX_CLIENT_ID_LEN)<0) return -1;
+    if (send_u8(client_fd,status)<0) return -1;
+    if (send_u8(client_fd,player_count)<0) return -1;
+
+    for (uint8_t i=0;i<player_count;i++) {
+        if (send_u8(client_fd,players[i].id)<0) return -1;
+        if (send_u8(client_fd,players[i].ready)<0) return -1;
+        if (write_exact(client_fd, players[i].name,MAX_NAME_LEN)<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_map(int client_fd, uint8_t target_id, const map_t* map)
+{
+    msg_header_t header;
+
+    if (!map || !map->tiles) return -1;
+
+    header.msg_type=MSG_MAP;
+    header.sender_id=SERVER_TARGET_ID;
+    header.target_id=target_id;
+
+    if (send_header(client_fd,&header)<0) return -1;
+    if (send_u16_be(client_fd,map->rows)<0) return -1;
+    if (send_u16_be(client_fd,map->cols)<0) return -1;
+
+    for (uint32_t i=0;i<(uint32_t)map->rows*map->cols;i++) {
+        if (send_u8(client_fd,(uint8_t)map->tiles[i])<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_move(server_t* server, uint8_t slot_id)
+{
+    if (!server || slot_id>=MAX_PLAYERS) return -1;
+
+    msg_moved_t moved;
+    moved.player_id=slot_id;
+
+    pthread_mutex_lock(&server->state.mutex);
+    player_slot_t* slot=&server->state.players[slot_id];
+    if (!slot->alive || !slot->connected || server->state.map.cols==0) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    uint16_t cell_index=make_cell_index(slot->p.row,slot->p.col,server->state.map.cols);
+
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    moved.cell_index=cell_index;
+    moved.header.msg_type=MSG_MOVED;
+    moved.header.sender_id=slot_id;
+    moved.header.target_id=BROADCAST_TARGET_ID;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&moved.header)<0) return -1;
+        if (send_u8(client_fd[i],moved.player_id)<0) return -1;
+        if (send_u16_be(client_fd[i],moved.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
+void send_move_broadcast(server_t* server, bool* moved_players)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!moved_players[i]) continue;
+        if (send_move(server,i)!=0) {
+            printf("Error sending movement data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+        }
+    }
+}
+
+int send_bomb(server_t* server, uint8_t slot_id)
+{
+    if (!server || slot_id>=MAX_PLAYERS) return -1;
+
+    msg_bomb_t bomb;
+    bomb.player_id=slot_id;
+
+    pthread_mutex_lock(&server->state.mutex);
+    player_slot_t* slot=&server->state.players[slot_id];
+    if (!slot->alive || !slot->connected || server->state.map.cols==0) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    slot->p.bomb_count--;
+    uint16_t cell_index=make_cell_index(slot->p.row,slot->p.col,server->state.map.cols);
+
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    bomb.cell_index=cell_index;
+    bomb.header.msg_type=MSG_BOMB;
+    bomb.header.sender_id=slot_id;
+    bomb.header.target_id=BROADCAST_TARGET_ID;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&bomb.header)<0) return -1;
+        if (send_u8(client_fd[i],bomb.player_id)<0) return -1;
+        if (send_u16_be(client_fd[i],bomb.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
+void send_bomb_broadcast(server_t* server, bool* bomb_placed_players)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!bomb_placed_players[i]) continue;
+        if (send_bomb(server,i)!=0) {
+            printf("Error sending bomb data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+        }
+    }
+}
+
+void send_exploding_broadcast(server_t* server, bool* exploding_bombs)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!exploding_bombs[i]) continue;
+        if (send_explode_start(server,&server->state.bombs[i])!=0) {
+            printf("Error sending explode start data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+        }
+    }
+}
+
+void send_end_explode_broadcast(server_t* server, bool* end_exploding_bombs)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!end_exploding_bombs[i]) continue;
+        if (send_explode_end(server,&server->state.bombs[i])!=0) {
+            printf("Error sending explode end data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+        }
+    }
+}
+
+int send_explode_start(server_t* server, bomb_t* slot)
+{
+    msg_explosion_t explosion;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint16_t cell_index=make_cell_index(slot->row,slot->col,server->state.map.cols);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* p_slot=&server->state.players[i];
+        if (!p_slot->connected) continue;
+        client_fd[client_count++]=p_slot->socket_fd;
+    }
+
+    pthread_mutex_unlock(&server->state.mutex);
+
+    explosion.header.msg_type=MSG_EXPLOSION_START;
+    explosion.header.sender_id=slot->owner_id;
+    explosion.header.target_id=BROADCAST_TARGET_ID;
+    explosion.cell_index=cell_index;
+    explosion.radius=slot->radius;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&explosion.header)<0) return -1;
+        if (send_u8(client_fd[i],explosion.radius)<0) return -1;
+        if (send_u16_be(client_fd[i],explosion.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_explode_end(server_t* server, bomb_t* slot)
+{
+    msg_explosion_t explosion;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint16_t cell_index=make_cell_index(slot->row,slot->col,server->state.map.cols);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* p_slot=&server->state.players[i];
+        if (!p_slot->connected) continue;
+        client_fd[client_count++]=p_slot->socket_fd;
+    }
+
+    pthread_mutex_unlock(&server->state.mutex);
+
+    explosion.header.msg_type=MSG_EXPLOSION_END;
+    explosion.header.sender_id=slot->owner_id;
+    explosion.header.target_id=BROADCAST_TARGET_ID;
+    explosion.cell_index=cell_index;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&explosion.header)<0) return -1;
+        if (send_u16_be(client_fd[i],explosion.cell_index)<0) return -1;
+    }
+
+    return 0;
+}

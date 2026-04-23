@@ -12,8 +12,11 @@ LDLIBS := -pthread
 SERVER_SRCS := \
 	src/server/src/main.c \
 	src/server/src/server.c \
+	src/server/src/bombs.c \
+	src/server/src/lobby.c \
+	src/server/src/server_messages.c \
 	src/server/src/game_state.c \
-	src/server/src/player_states.c \
+	src/server/src/player_actions.c \
 	src/shared/src/map_loader.c \
 	src/shared/src/net_utils.c
 

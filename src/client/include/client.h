@@ -7,6 +7,7 @@
 
 typedef struct {
     bool known;
+    bool alive;
     uint16_t row;
     uint16_t col;
 } client_player_t;

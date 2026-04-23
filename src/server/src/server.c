@@ -158,6 +158,7 @@ static void* tick_thread_loop(void* arg)
         bool bomb_placed_players[MAX_PLAYERS]={0};
         bool exploding_bombs[MAX_PLAYERS]={0};
         bool end_exploding_bombs[MAX_PLAYERS]={0};
+        bool dead_players[MAX_PLAYERS]={0};
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
@@ -201,6 +202,18 @@ static void* tick_thread_loop(void* arg)
         }
 
         // - detect deaths
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            player_slot_t* p=&server->state.players[i];
+            if (!p->connected || !p->alive) continue;
+
+            uint16_t cell=make_cell_index(p->p.row,p->p.col,server->state.map.cols);
+            if (server->state.map.tiles[cell]==TILE_BOMB_EXPLODE) {
+                p->alive=false;
+                p->p.alive=false;
+                dead_players[i]=true;
+            }
+        }
+
         // - check win condition
         pthread_mutex_unlock(&server->state.mutex);
 
@@ -212,6 +225,7 @@ static void* tick_thread_loop(void* arg)
         send_bomb_broadcast(server,bomb_placed_players);
         send_exploding_broadcast(server,exploding_bombs);
         send_end_explode_broadcast(server,end_exploding_bombs);
+        send_death_broadcast(server,dead_players);
 
         if (map_change) broadcast_map(server);
     }
@@ -261,8 +275,14 @@ static void free_player_slot(server_t* server, uint8_t slot_id)
     pthread_mutex_unlock(&server->state.mutex);
 }
 
-static void cleanup(server_t* server,int client_fd,uint8_t slot_id)
+static void cleanup(server_t* server,int client_fd,uint8_t slot_id,bool joined)
 {
+    if (joined) {
+        if (send_leave_broadcast(server,slot_id)<0) {
+            printf("Error broadcasting leave for slot %u\n",slot_id);
+        }
+    }
+
     close(client_fd);
     free_player_slot(server,slot_id);
 }
@@ -275,6 +295,7 @@ static void* client_thread_main(void* arg)
     int client_fd=args->client_fd;
     uint8_t slot_id=args->slot_id;
     bool connection_active=true;
+    bool joined=false;
     free(args);
     // Process incoming messages from client
     while (connection_active) {
@@ -286,27 +307,38 @@ static void* client_thread_main(void* arg)
 
         switch (header.msg_type) {
             case MSG_HELLO: {
-                if (handle_hello(server,client_fd,slot_id,header)<0) connection_active=false;
+                if (handle_hello(server,client_fd,slot_id,header)<0) {
+                    send_disconnect(client_fd,slot_id);
+                    connection_active=false;
+                }
+                else joined=true;
                 break;
             }
             case MSG_MOVE_ATTEMPT:
-                if (handle_move(server,client_fd,slot_id,header)<0) connection_active=false;
+                if (handle_move(server,client_fd,slot_id,header)<0) {
+                    send_disconnect(client_fd,slot_id);
+                    connection_active=false;
+                }
                 break;
             case MSG_BOMB_ATTEMPT:
-                if (handle_bomb(server,client_fd,slot_id,header)<0) connection_active=false;
+                if (handle_bomb(server,client_fd,slot_id,header)<0) {
+                    send_disconnect(client_fd,slot_id);
+                    connection_active=false;
+                }
                 break;
             case MSG_LEAVE:
                 connection_active=false;
                 break;
             default: {
                 printf("Unknown request type %u from slot %u\n",header.msg_type,slot_id);
+                send_disconnect(client_fd,slot_id);
                 connection_active=false;
                 break;
             }
         }
     }
 
-    cleanup(server,client_fd,slot_id);
+    cleanup(server,client_fd,slot_id,joined);
     return NULL;
 }
 
@@ -343,6 +375,7 @@ int run_server(server_t* server)
         // No free slot found
         if (!slot_found) {
             pthread_mutex_unlock(&server->state.mutex);
+            send_disconnect(client_fd,SERVER_TARGET_ID);
             close(client_fd);
             continue;
         }
@@ -350,6 +383,7 @@ int run_server(server_t* server)
 
         client_thread_args_t* args=malloc(sizeof(client_thread_args_t));
         if (!args) {
+            send_disconnect(client_fd,i);
             close(client_fd);
             free_player_slot(server,i);
             continue;
@@ -363,6 +397,7 @@ int run_server(server_t* server)
         if (pthread_create(&client_thread,NULL,client_thread_main,args)!=0) {
             uint8_t slot_id=args->slot_id;
             free(args);
+            send_disconnect(client_fd,slot_id);
             close(client_fd);
             free_player_slot(server,slot_id);
             continue;

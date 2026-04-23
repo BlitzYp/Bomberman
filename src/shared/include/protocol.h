@@ -44,5 +44,9 @@ typedef struct {
     uint8_t radius;
 } msg_explosion_t;
 
+typedef struct {
+    msg_header_t header;
+    uint8_t player_id;
+} msg_death_t;
 
 #endif

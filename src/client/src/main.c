@@ -166,6 +166,7 @@ static void redraw_game(WINDOW* win, const client_game_t* game)
 
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         if (!game->players[i].known) continue;
+        if (!game->players[i].alive) continue;
         mvwaddch(win,game->players[i].row+1,game->players[i].col+1,(chtype)('1'+i));
     }
 
@@ -233,8 +234,21 @@ static int recv_player_move_payload(int fd, WINDOW* win, client_game_t* game)
     if (row>=game->rows || col>=game->cols) return -1;
 
     game->players[player_id].known=true;
+    game->players[player_id].alive=true;
     game->players[player_id].row=row;
     game->players[player_id].col=col;
+
+    return 0;
+}
+
+static int recv_death_payload(int fd, client_game_t* game)
+{
+    uint8_t player_id;
+
+    if (recv_u8(fd, &player_id) < 0) return -1;
+    if (player_id>=MAX_PLAYERS) return -1;
+
+    game->players[player_id].alive=false;
 
     return 0;
 }
@@ -276,6 +290,14 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
     msg_header_t header;
     if (get_header(fd, &header)<0) return -1;
     switch (header.msg_type) {
+        case MSG_DISCONNECT:
+            return 1;
+        case MSG_LEAVE:
+            if (header.sender_id>=MAX_PLAYERS) return -1;
+            game->players[header.sender_id].known=false;
+            game->players[header.sender_id].alive=false;
+            redraw_game(win,game);
+            return 0;
         case MSG_MAP:
             if (recv_map_payload(fd,game)<0) return -1;
             redraw_game(win,game);
@@ -292,6 +314,10 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
             return 0;
         case MSG_EXPLOSION_END:
             if (discard_explosion_end_payload(fd)!=0) return -1;
+            return 0;
+        case MSG_DEATH:
+            if (recv_death_payload(fd,game)!=0) return -1;
+            redraw_game(win,game);
             return 0;
         default: return -1;
     }
@@ -402,7 +428,14 @@ int main(int argc, char** argv)
             }
 
             if (socket_poll.revents & POLLIN) {
-                if (process_server_message(fd, map_wind, &game) < 0) {
+                int message_result=process_server_message(fd, map_wind, &game);
+                if (message_result>0) {
+                    end_wind(mainwind, map_wind);
+                    close(fd);
+                    free(game.tiles);
+                    return 0;
+                }
+                if (message_result<0) {
                     end_wind(mainwind, map_wind);
                     fprintf(stderr, "recv server message failed\n");
                     close(fd);

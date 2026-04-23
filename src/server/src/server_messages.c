@@ -51,6 +51,45 @@ int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
     return 0;
 }
 
+int send_disconnect(int client_fd, uint8_t target_id)
+{
+    msg_header_t header;
+
+    header.msg_type=MSG_DISCONNECT;
+    header.sender_id=SERVER_TARGET_ID;
+    header.target_id=target_id;
+
+    return send_header(client_fd,&header);
+}
+
+int send_leave_broadcast(server_t* server, uint8_t leaving_player_id)
+{
+    if (!server || leaving_player_id>=MAX_PLAYERS) return -1;
+
+    int client_fds[MAX_PLAYERS];
+    uint8_t client_count=0;
+
+    pthread_mutex_lock(&server->state.mutex);
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* player=&server->state.players[i];
+        if (!player->connected || player->id==leaving_player_id) continue;
+        client_fds[client_count++]=player->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    msg_header_t header;
+    header.msg_type=MSG_LEAVE;
+    header.sender_id=leaving_player_id;
+    header.target_id=BROADCAST_TARGET_ID;
+
+    int result=0;
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fds[i],&header)<0) result=-1;
+    }
+
+    return result;
+}
+
 int send_map(int client_fd, uint8_t target_id, const map_t* map)
 {
     msg_header_t header;
@@ -228,6 +267,45 @@ void send_end_explode_broadcast(server_t* server, bool* end_exploding_bombs)
         if (!end_exploding_bombs[i]) continue;
         if (send_explode_end(server,&server->state.bombs[i])!=0) {
             printf("Error sending explode end data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+        }
+    }
+}
+
+int send_death(server_t* server, uint8_t player_id)
+{
+    if (!server || player_id>=MAX_PLAYERS) return -1;
+
+    msg_death_t death;
+    death.player_id=player_id;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    death.header.msg_type=MSG_DEATH;
+    death.header.sender_id=player_id;
+    death.header.target_id=BROADCAST_TARGET_ID;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&death.header)<0) return -1;
+        if (send_u8(client_fd[i],death.player_id)<0) return -1;
+    }
+
+    return 0;
+}
+
+void send_death_broadcast(server_t* server, bool* dead_players)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!dead_players[i]) continue;
+        if (send_death(server,i)!=0) {
+            printf("Error sending death data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
         }
     }
 }

@@ -2,7 +2,10 @@
 #include "../include/server.h"
 #include "../../shared/include/protocol.h"
 #include "../../shared/include/net_utils.h"
-#include "../include/player_states.h"
+#include "../include/player_actions.h"
+#include "../include/server_messages.h"
+#include "../include/bombs.h"
+#include "../include/lobby.h"
 
 #include <ncurses.h>
 #include <stdbool.h>
@@ -152,6 +155,10 @@ static void* tick_thread_loop(void* arg)
     for (;;) {
         usleep(sleep_time);
         bool moved_players[MAX_PLAYERS]={0};
+        bool bomb_placed_players[MAX_PLAYERS]={0};
+        bool exploding_bombs[MAX_PLAYERS]={0};
+        bool end_exploding_bombs[MAX_PLAYERS]={0};
+        bool dead_players[MAX_PLAYERS]={0};
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
@@ -159,6 +166,7 @@ static void* tick_thread_loop(void* arg)
         }
 
         //-- Process queued actions
+        bool map_change=false;
         action_t action;
         while (dequeue_action(&server->state,&action)==0) {
             if (action.type==ACTION_MOVE) {
@@ -169,19 +177,57 @@ static void* tick_thread_loop(void* arg)
             }
             else if (action.type==ACTION_BOMB) {
                 // TODO: BOMB ACTION
+                // player_slot_t* slot=&server->state.players[action.player_id];
+                bomb_t* bomb=&server->state.bombs[action.player_id];
+                handle_action_bomb(server,bomb,action);
+                bomb_placed_players[bomb->owner_id]=true;
+                map_change=true;
             }
         }
 
-        // Simulation here
-        // TODO: authoritative game simulation:
-        // - update bomb timers
-        // - resolve explosions
+        // - update bomb timer
+        update_bomb_timers(server);
+
+        // -- resolve explosions
+        collect_bomb_events(server,exploding_bombs,end_exploding_bombs);
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            if (exploding_bombs[i]) {
+                apply_explosion_start(server,&server->state.bombs[i]);
+                map_change=true;
+            }
+            if (end_exploding_bombs[i]) {
+                apply_explosion_end(server,&server->state.bombs[i]);
+                map_change=true;
+            }
+        }
+
         // - detect deaths
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            player_slot_t* p=&server->state.players[i];
+            if (!p->connected || !p->alive) continue;
+
+            uint16_t cell=make_cell_index(p->p.row,p->p.col,server->state.map.cols);
+            if (server->state.map.tiles[cell]==TILE_BOMB_EXPLODE) {
+                p->alive=false;
+                p->p.alive=false;
+                dead_players[i]=true;
+            }
+        }
+
         // - check win condition
         pthread_mutex_unlock(&server->state.mutex);
 
         // Send move message to all here to avoid deadlock situation
         send_move_broadcast(server,moved_players);
+
+        // All of the map changes are recorded when we broadcast the new map, we can use these functions later for sound effects maybe
+        // For now I think we should discard them in the client
+        send_bomb_broadcast(server,bomb_placed_players);
+        send_exploding_broadcast(server,exploding_bombs);
+        send_end_explode_broadcast(server,end_exploding_bombs);
+        send_death_broadcast(server,dead_players);
+
+        if (map_change) broadcast_map(server);
     }
     return NULL;
 }
@@ -197,6 +243,11 @@ void init_slot(player_slot_t* slot,int client_fd,uint8_t id,map_t* map)
     slot->p.id=id;
     slot->p.alive=true;
     slot->p.ready=false;
+
+    slot->p.bomb_count=1;
+    slot->p.bomb_radius=1;
+    slot->p.bomb_timer_ticks=3*TICKS_PER_SECOND;
+    slot->p.speed=3;
 
     if (id<map->spawn_count && map->spawn_cells[id]!=UINT16_MAX) {
         uint16_t cell=map->spawn_cells[id];
@@ -224,120 +275,16 @@ static void free_player_slot(server_t* server, uint8_t slot_id)
     pthread_mutex_unlock(&server->state.mutex);
 }
 
-static void cleanup(server_t* server,int client_fd,uint8_t slot_id)
+static void cleanup(server_t* server,int client_fd,uint8_t slot_id,bool joined)
 {
-    close(client_fd);
-    free_player_slot(server,slot_id);
-}
-
-static int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
-{
-    typedef struct {
-        uint8_t id;
-        uint8_t ready;
-        char name[MAX_NAME_LEN];
-    } player_info;
-
-    msg_header_t header;
-    uint8_t status;
-    char server_id[MAX_CLIENT_ID_LEN]="server";
-    player_info players[MAX_PLAYERS];
-    uint8_t player_count=0;
-
-    pthread_mutex_lock(&server->state.mutex);
-    status=(uint8_t)server->state.status;
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        player_slot_t* slot=&server->state.players[i];
-        if (!slot->connected) continue;
-        players[player_count].id=slot->id;
-        players[player_count].ready=slot->ready ? 1 : 0;
-        memcpy(players[player_count].name,slot->name,MAX_NAME_LEN);
-        player_count++;
-    }
-    pthread_mutex_unlock(&server->state.mutex);
-
-    header.msg_type=MSG_WELCOME;
-    header.sender_id=slot_id;
-    header.target_id=slot_id;
-
-    if (send_header(client_fd,&header)<0) return -1;
-    if (write_exact(client_fd, server_id, MAX_CLIENT_ID_LEN)<0) return -1;
-    if (send_u8(client_fd,status)<0) return -1;
-    if (send_u8(client_fd,player_count)<0) return -1;
-
-    for (uint8_t i=0;i<player_count;i++) {
-        if (send_u8(client_fd,players[i].id)<0) return -1;
-        if (send_u8(client_fd,players[i].ready)<0) return -1;
-        if (write_exact(client_fd, players[i].name,MAX_NAME_LEN)<0) return -1;
-    }
-
-    return 0;
-}
-
-static bool check_unique_name(server_t* server,char* name, uint8_t slot_id)
-{
-    if (!name || !server) return -1;
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        player_slot_t* player=&server->state.players[i];
-        if (!player->connected || i==slot_id) continue;
-        char* check=player->name;
-        if (strncmp(name,check,MAX_NAME_LEN)==0) return false;
-    }
-    return true;
-}
-
-static int send_map(int client_fd, uint8_t target_id, const map_t* map)
-{
-    msg_header_t header;
-
-    if (!map || !map->tiles) return -1;
-
-    header.msg_type = MSG_MAP;
-    header.sender_id = SERVER_TARGET_ID;
-    header.target_id = target_id;
-
-    if (send_header(client_fd, &header)<0) return -1;
-    if (send_u16_be(client_fd, map->rows)<0) return -1;
-    if (send_u16_be(client_fd, map->cols)<0) return -1;
-
-    for (uint32_t i=0;i<(uint32_t)map->rows*map->cols;i++)
-        if (send_u8(client_fd, (uint8_t)map->tiles[i])<0) return -1;
-
-    return 0;
-}
-
-static int handle_hello(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)
-{
-    msg_hello_t msg;
-    uint8_t connected_count=0;
-    uint8_t connected_players[MAX_PLAYERS];
-
-    msg.header=header;
-    if (read_exact(client_fd,msg.client_id,MAX_CLIENT_ID_LEN)<0) return -1;
-    if (read_exact(client_fd,msg.player_name,MAX_NAME_LEN)<0) return -1;
-
-    pthread_mutex_lock(&server->state.mutex);
-    // TODO: Implement check if the name is valid
-    bool r=check_unique_name(server, msg.player_name,slot_id);
-    if (r) {
-        memcpy(server->state.players[slot_id].name,msg.player_name,MAX_NAME_LEN);
-        server->state.players[slot_id].name[MAX_NAME_LEN]='\0';
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (!server->state.players[i].connected) continue;
-            connected_players[connected_count++]=i;
+    if (joined) {
+        if (send_leave_broadcast(server,slot_id)<0) {
+            printf("Error broadcasting leave for slot %u\n",slot_id);
         }
     }
-    pthread_mutex_unlock(&server->state.mutex);
-    if (!r) return -1;
-    if (send_welcome(server,client_fd,slot_id)!=0) return -1;
-    if (send_map(client_fd,slot_id,&server->state.map)!=0) return -1;
 
-    for (uint8_t i=0;i<connected_count;i++) {
-        if (send_move(server,connected_players[i])!=0) return -1;
-    }
-
-    printf("HELLO FROM %s SLOT %u\n",msg.player_name,slot_id);
-    return 0;
+    close(client_fd);
+    free_player_slot(server,slot_id);
 }
 
 // PROCESS MAIN CLIENT THREAD HERE
@@ -348,6 +295,7 @@ static void* client_thread_main(void* arg)
     int client_fd=args->client_fd;
     uint8_t slot_id=args->slot_id;
     bool connection_active=true;
+    bool joined=false;
     free(args);
     // Process incoming messages from client
     while (connection_active) {
@@ -359,24 +307,38 @@ static void* client_thread_main(void* arg)
 
         switch (header.msg_type) {
             case MSG_HELLO: {
-                if (handle_hello(server,client_fd,slot_id,header)<0) connection_active=false;
+                if (handle_hello(server,client_fd,slot_id,header)<0) {
+                    send_disconnect(client_fd,slot_id);
+                    connection_active=false;
+                }
+                else joined=true;
                 break;
             }
             case MSG_MOVE_ATTEMPT:
-                if (handle_move(server,client_fd,slot_id,header)<0) connection_active=false;
+                if (handle_move(server,client_fd,slot_id,header)<0) {
+                    send_disconnect(client_fd,slot_id);
+                    connection_active=false;
+                }
+                break;
+            case MSG_BOMB_ATTEMPT:
+                if (handle_bomb(server,client_fd,slot_id,header)<0) {
+                    send_disconnect(client_fd,slot_id);
+                    connection_active=false;
+                }
                 break;
             case MSG_LEAVE:
                 connection_active=false;
                 break;
             default: {
                 printf("Unknown request type %u from slot %u\n",header.msg_type,slot_id);
+                send_disconnect(client_fd,slot_id);
                 connection_active=false;
                 break;
             }
         }
     }
 
-    cleanup(server,client_fd,slot_id);
+    cleanup(server,client_fd,slot_id,joined);
     return NULL;
 }
 
@@ -413,6 +375,7 @@ int run_server(server_t* server)
         // No free slot found
         if (!slot_found) {
             pthread_mutex_unlock(&server->state.mutex);
+            send_disconnect(client_fd,SERVER_TARGET_ID);
             close(client_fd);
             continue;
         }
@@ -420,6 +383,7 @@ int run_server(server_t* server)
 
         client_thread_args_t* args=malloc(sizeof(client_thread_args_t));
         if (!args) {
+            send_disconnect(client_fd,i);
             close(client_fd);
             free_player_slot(server,i);
             continue;
@@ -433,6 +397,7 @@ int run_server(server_t* server)
         if (pthread_create(&client_thread,NULL,client_thread_main,args)!=0) {
             uint8_t slot_id=args->slot_id;
             free(args);
+            send_disconnect(client_fd,slot_id);
             close(client_fd);
             free_player_slot(server,slot_id);
             continue;

@@ -76,6 +76,19 @@ static int send_player_move(int fd, uint8_t dir)
     return 0;
 }
 
+static int send_player_bomb(int fd)
+{
+    msg_bomb_attempt_t attempt;
+
+    attempt.header.msg_type = MSG_BOMB_ATTEMPT;
+    attempt.header.sender_id = SERVER_TARGET_ID;
+    attempt.header.target_id = SERVER_TARGET_ID;
+
+    if (send_header(fd, &attempt.header) < 0) return -1;
+
+    return 0;
+}
+
 static int recv_welcome(int fd)
 {
     msg_header_t header;
@@ -122,6 +135,10 @@ static char tile_to_char(tile_t tile)
         case TILE_HARD_WALL:
             return '#';
         case TILE_SOFT_BLOCK:
+            return '%';
+        case TILE_BOMB:
+            return 'O';
+        case TILE_BOMB_EXPLODE:
             return '+';
         default:
             return '?';
@@ -149,6 +166,7 @@ static void redraw_game(WINDOW* win, const client_game_t* game)
 
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         if (!game->players[i].known) continue;
+        if (!game->players[i].alive) continue;
         mvwaddch(win,game->players[i].row+1,game->players[i].col+1,(chtype)('1'+i));
     }
 
@@ -174,7 +192,7 @@ static int recv_map_payload(int fd, client_game_t* game)
             return -1;
         }
 
-        if (tile>TILE_SOFT_BLOCK) {
+        if (tile>TILE_BOMB_EXPLODE) {
             free(tiles);
             return -1;
         }
@@ -216,8 +234,52 @@ static int recv_player_move_payload(int fd, WINDOW* win, client_game_t* game)
     if (row>=game->rows || col>=game->cols) return -1;
 
     game->players[player_id].known=true;
+    game->players[player_id].alive=true;
     game->players[player_id].row=row;
     game->players[player_id].col=col;
+
+    return 0;
+}
+
+static int recv_death_payload(int fd, client_game_t* game)
+{
+    uint8_t player_id;
+
+    if (recv_u8(fd, &player_id) < 0) return -1;
+    if (player_id>=MAX_PLAYERS) return -1;
+
+    game->players[player_id].alive=false;
+
+    return 0;
+}
+
+static int discard_bomb_payload(int fd)
+{
+    uint8_t player_id;
+    uint16_t cell_index;
+
+    if (recv_u8(fd, &player_id) < 0) return -1;
+    if (recv_u16_be(fd, &cell_index) < 0) return -1;
+
+    return 0;
+}
+
+static int discard_explosion_start_payload(int fd)
+{
+    uint8_t radius;
+    uint16_t cell_index;
+
+    if (recv_u8(fd, &radius) < 0) return -1;
+    if (recv_u16_be(fd, &cell_index) < 0) return -1;
+
+    return 0;
+}
+
+static int discard_explosion_end_payload(int fd)
+{
+    uint16_t cell_index;
+
+    if (recv_u16_be(fd, &cell_index) < 0) return -1;
 
     return 0;
 }
@@ -228,12 +290,33 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
     msg_header_t header;
     if (get_header(fd, &header)<0) return -1;
     switch (header.msg_type) {
+        case MSG_DISCONNECT:
+            return 1;
+        case MSG_LEAVE:
+            if (header.sender_id>=MAX_PLAYERS) return -1;
+            game->players[header.sender_id].known=false;
+            game->players[header.sender_id].alive=false;
+            redraw_game(win,game);
+            return 0;
         case MSG_MAP:
             if (recv_map_payload(fd,game)<0) return -1;
             redraw_game(win,game);
             return 0;
         case MSG_MOVED:
             if (recv_player_move_payload(fd,win,game)!=0) return -1;
+            redraw_game(win,game);
+            return 0;
+        case MSG_BOMB:
+            if (discard_bomb_payload(fd)!=0) return -1;
+            return 0;
+        case MSG_EXPLOSION_START:
+            if (discard_explosion_start_payload(fd)!=0) return -1;
+            return 0;
+        case MSG_EXPLOSION_END:
+            if (discard_explosion_end_payload(fd)!=0) return -1;
+            return 0;
+        case MSG_DEATH:
+            if (recv_death_payload(fd,game)!=0) return -1;
             redraw_game(win,game);
             return 0;
         default: return -1;
@@ -345,7 +428,14 @@ int main(int argc, char** argv)
             }
 
             if (socket_poll.revents & POLLIN) {
-                if (process_server_message(fd, map_wind, &game) < 0) {
+                int message_result=process_server_message(fd, map_wind, &game);
+                if (message_result>0) {
+                    end_wind(mainwind, map_wind);
+                    close(fd);
+                    free(game.tiles);
+                    return 0;
+                }
+                if (message_result<0) {
                     end_wind(mainwind, map_wind);
                     fprintf(stderr, "recv server message failed\n");
                     close(fd);
@@ -372,6 +462,16 @@ int main(int argc, char** argv)
             case KEY_RIGHT:
                 dir = DIR_RIGHT;
                 break;
+            case ' ':
+                dir = -1;
+                if (send_player_bomb(fd) < 0) {
+                    end_wind(mainwind, map_wind);
+                    fprintf(stderr, "send bomb failed\n");
+                    close(fd);
+                    free(game.tiles);
+                    return 1;
+                }
+                break;
             case 'q':
                 send_leave(fd);
                 end_wind(mainwind, map_wind);
@@ -382,14 +482,15 @@ int main(int argc, char** argv)
                 continue;
         }
 
-        if (send_player_move(fd, (uint8_t)dir) < 0) {
-            end_wind(mainwind, map_wind);
-            fprintf(stderr, "send move failed\n");
-            close(fd);
-            free(game.tiles);
-            return 1;
-        }
-
+        if (dir!=-1) {
+            if (send_player_move(fd, (uint8_t)dir) < 0) {
+                end_wind(mainwind, map_wind);
+                fprintf(stderr, "send move failed\n");
+                close(fd);
+                free(game.tiles);
+                return 1;
+            }
+        }    
     }
 
     end_wind(mainwind, map_wind);

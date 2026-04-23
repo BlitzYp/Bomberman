@@ -4,6 +4,7 @@
 
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
@@ -68,6 +69,49 @@ int send_map(int client_fd, uint8_t target_id, const map_t* map)
         if (send_u8(client_fd,(uint8_t)map->tiles[i])<0) return -1;
     }
 
+    return 0;
+}
+
+int broadcast_map(server_t* server)
+{
+    if (!server) return -1;
+    int client_fds[MAX_PLAYERS];
+    uint8_t client_ids[MAX_PLAYERS],client_count=0;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint16_t rows=server->state.map.rows,cols=server->state.map.cols;
+    tile_t* tiles=malloc(rows*cols*sizeof(*tiles));
+
+    if (!tiles) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+
+    memcpy(tiles,server->state.map.tiles,rows*cols*sizeof(*tiles));
+
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* p=&server->state.players[i];
+        if (!p->connected) continue;
+        client_fds[client_count]=p->socket_fd;
+        client_ids[client_count++]=p->id;
+    }
+
+    pthread_mutex_unlock(&server->state.mutex);
+
+    map_t curr_map;
+    memset(&curr_map,0,sizeof(curr_map));
+    curr_map.rows=rows;
+    curr_map.cols=cols;
+    curr_map.tiles=tiles;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_map(client_fds[i],client_ids[i],&curr_map)<0) {
+            free(tiles);
+            return -1;
+        }
+    }
+
+    free(tiles);
     return 0;
 }
 
@@ -188,12 +232,12 @@ void send_end_explode_broadcast(server_t* server, bool* end_exploding_bombs)
     }
 }
 
-int send_explode_start(server_t* server, bomb_t* slot)
+int send_explode_start(server_t* server, bomb_t* bomb)
 {
     msg_explosion_t explosion;
 
     pthread_mutex_lock(&server->state.mutex);
-    uint16_t cell_index=make_cell_index(slot->row,slot->col,server->state.map.cols);
+    uint16_t cell_index=make_cell_index(bomb->row,bomb->col,server->state.map.cols);
     uint8_t client_count=0;
     int client_fd[MAX_PLAYERS];
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
@@ -205,10 +249,10 @@ int send_explode_start(server_t* server, bomb_t* slot)
     pthread_mutex_unlock(&server->state.mutex);
 
     explosion.header.msg_type=MSG_EXPLOSION_START;
-    explosion.header.sender_id=slot->owner_id;
+    explosion.header.sender_id=bomb->owner_id;
     explosion.header.target_id=BROADCAST_TARGET_ID;
     explosion.cell_index=cell_index;
-    explosion.radius=slot->radius;
+    explosion.radius=bomb->radius;
 
     for (uint8_t i=0;i<client_count;i++) {
         if (send_header(client_fd[i],&explosion.header)<0) return -1;
@@ -219,12 +263,12 @@ int send_explode_start(server_t* server, bomb_t* slot)
     return 0;
 }
 
-int send_explode_end(server_t* server, bomb_t* slot)
+int send_explode_end(server_t* server, bomb_t* bomb)
 {
     msg_explosion_t explosion;
 
     pthread_mutex_lock(&server->state.mutex);
-    uint16_t cell_index=make_cell_index(slot->row,slot->col,server->state.map.cols);
+    uint16_t cell_index=make_cell_index(bomb->row,bomb->col,server->state.map.cols);
     uint8_t client_count=0;
     int client_fd[MAX_PLAYERS];
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
@@ -236,7 +280,7 @@ int send_explode_end(server_t* server, bomb_t* slot)
     pthread_mutex_unlock(&server->state.mutex);
 
     explosion.header.msg_type=MSG_EXPLOSION_END;
-    explosion.header.sender_id=slot->owner_id;
+    explosion.header.sender_id=bomb->owner_id;
     explosion.header.target_id=BROADCAST_TARGET_ID;
     explosion.cell_index=cell_index;
 

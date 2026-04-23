@@ -2,11 +2,18 @@
 
 #include <stdint.h>
 
+// ~50ms, can change this later
+#define EXPLOSION_DURATION_TICKS 5
+
 void update_bomb_timers(server_t* server)
 {
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks>0) {
-            server->state.bombs[i].timer_ticks--;
+        bomb_t* bomb=&server->state.bombs[i];
+
+        if (bomb->state==BOMB_PLANTED && bomb->timer_ticks>0) {
+            bomb->timer_ticks--;
+        } else if (bomb->state==BOMB_EXPLODING && bomb->explosion_ticks>0) {
+            bomb->explosion_ticks--;
         }
     }
 }
@@ -14,95 +21,87 @@ void update_bomb_timers(server_t* server)
 void collect_bomb_events(server_t* server, bool* exploding_bombs, bool* end_exploding_bombs)
 {
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (server->state.bombs[i].active && server->state.bombs[i].timer_ticks==0) {
+        bomb_t* bomb=&server->state.bombs[i];
+
+        if (bomb->state==BOMB_PLANTED && bomb->timer_ticks==0) {
             exploding_bombs[i]=true;
-            server->state.bombs[i].active=0;
-            server->state.bombs[i].timer_ticks++;
-        } else if (!server->state.bombs[i].active && server->state.bombs[i].timer_ticks==1) {
+            bomb->state=BOMB_EXPLODING;
+            bomb->explosion_ticks=EXPLOSION_DURATION_TICKS;
+        } else if (bomb->state==BOMB_EXPLODING && bomb->explosion_ticks==0) {
             end_exploding_bombs[i]=true;
+            bomb->state=BOMB_INACTIVE;
+            bomb->timer_ticks=0;
+            bomb->explosion_ticks=0;
         }
     }
 }
 
-void apply_explosion_start(server_t* server, bomb_t* slot)
+static bool valid_cell(map_t* map,int r,int c)
 {
-    uint16_t cell_index=make_cell_index(slot->row,slot->col,server->state.map.cols);
+    return r>=0 && c>=0 && r<map->rows && c<map->cols;
+}
 
-    server->state.map.tiles[cell_index]=TILE_BOMB_EXPLODE;
-    int index=0, radius=slot->radius;
-    for (int i=1;i<radius+1;i++) {
-        index=cell_index+i;
-        if (cell_index/server->state.map.cols!=index/server->state.map.cols) break;
-        if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
-            server->state.map.tiles[index]=TILE_BOMB_EXPLODE;
-        } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
-            break;
-        }
-    }
-    for (int i=1;i<radius+1;i++) {
-        index=cell_index+i*server->state.map.cols;
-        if (cell_index%server->state.map.cols!=index%server->state.map.cols) break;
-        if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
-            server->state.map.tiles[index]=TILE_BOMB_EXPLODE;
-        } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
-            break;
-        }
-    }
-    for (int i=-1;i>(-1*(radius+1));i--) {
-        index=cell_index+i;
-        if (cell_index/server->state.map.cols!=index/server->state.map.cols) break;
-        if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
-            server->state.map.tiles[index]=TILE_BOMB_EXPLODE;
-        } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
-            break;
-        }
-    }
-    for (int i=-1;i>(-1*(radius+1));i--) {
-        index=cell_index+i*server->state.map.cols;
-        if (cell_index%server->state.map.cols!=index%server->state.map.cols) break;
-        if (server->state.map.tiles[index]!=TILE_HARD_WALL) {
-            server->state.map.tiles[index]=TILE_BOMB_EXPLODE;
-        } else if (server->state.map.tiles[index]==TILE_HARD_WALL) {
-            break;
+bool mark_explosion_start_cell(map_t* map,int r,int c)
+{
+    // false means explosion propagation ends in this cell
+    if (!valid_cell(map,r,c)) return false;
+
+    uint16_t cell=make_cell_index((uint16_t)r,(uint16_t)c,map->cols);
+    tile_t tile=map->tiles[cell];
+
+    if (tile==TILE_HARD_WALL) return false;
+
+    map->tiles[cell]=TILE_BOMB_EXPLODE;
+    if (tile==TILE_SOFT_BLOCK) return false;
+
+    return true;
+}
+
+bool mark_explosion_end_cell(map_t* map,int r,int c)
+{
+    if (!valid_cell(map,r,c)) return false;
+
+    uint16_t cell=make_cell_index((uint16_t)r,(uint16_t)c,map->cols);
+    tile_t tile=map->tiles[cell];
+
+    if (tile!=TILE_BOMB_EXPLODE) return false;
+
+    map->tiles[cell]=TILE_EMPTY;
+    return true;
+}
+
+void apply_explosion_start(server_t* server, bomb_t* bomb)
+{
+    // left,right,up,down
+    int8_t dr[4]={0,0,-1,1};
+    int8_t dc[4]={-1,1,0,0};
+    mark_explosion_start_cell(&server->state.map,bomb->row,bomb->col);
+
+    for (uint8_t dir=0;dir<4;dir++) {
+        for (uint8_t dist=1;dist<=bomb->radius;dist++) {
+            int r=(int)bomb->row+dr[dir]*dist;
+            int c=(int)bomb->col+dc[dir]*dist;
+
+            // Attempt to start an explosion from this cell
+            if (!mark_explosion_start_cell(&server->state.map,r,c)) break;
         }
     }
 }
 
-void apply_explosion_end(server_t* server, bomb_t* slot)
+void apply_explosion_end(server_t* server, bomb_t* bomb)
 {
-    uint16_t cell_index=make_cell_index(slot->row,slot->col,server->state.map.cols);
+    // left,right,up,down
+    int8_t dr[4]={0,0,-1,1};
+    int8_t dc[4]={-1,1,0,0};
+    mark_explosion_end_cell(&server->state.map,bomb->row,bomb->col);
 
-    server->state.map.tiles[cell_index]=TILE_EMPTY;
-    int index=1;
-    while (true) {
-        if (server->state.map.tiles[cell_index+index]==TILE_BOMB_EXPLODE) {
-            server->state.map.tiles[cell_index+index]=TILE_EMPTY;
-            index++;
+    for (uint8_t dir=0;dir<4;dir++) {
+        for (uint8_t dist=1;dist<=bomb->radius;dist++) {
+            int r=(int)bomb->row+dr[dir]*dist;
+            int c=(int)bomb->col+dc[dir]*dist;
+
+            // Attempt to clear explosion in this cell
+            if (!mark_explosion_end_cell(&server->state.map,r,c)) break;
         }
-        if (server->state.map.tiles[cell_index+index]!=TILE_BOMB_EXPLODE) break;
-    }
-    index=-1;
-    while (true) {
-        if (server->state.map.tiles[cell_index+index]==TILE_BOMB_EXPLODE) {
-            server->state.map.tiles[cell_index+index]=TILE_EMPTY;
-            index--;
-        }
-        if (server->state.map.tiles[cell_index+index]!=TILE_BOMB_EXPLODE) break;
-    }
-    index=1;
-    while (true) {
-        if (server->state.map.tiles[cell_index+index*server->state.map.cols]==TILE_BOMB_EXPLODE) {
-            server->state.map.tiles[cell_index+index*server->state.map.cols]=TILE_EMPTY;
-            index++;
-        }
-        if (server->state.map.tiles[cell_index+index*server->state.map.cols]!=TILE_BOMB_EXPLODE) break;
-    }
-    index=-1;
-    while (true) {
-        if (server->state.map.tiles[cell_index+index*server->state.map.cols]==TILE_BOMB_EXPLODE) {
-            server->state.map.tiles[cell_index+index*server->state.map.cols]=TILE_EMPTY;
-            index--;
-        }
-        if (server->state.map.tiles[cell_index+index*server->state.map.cols]!=TILE_BOMB_EXPLODE) break;
     }
 }

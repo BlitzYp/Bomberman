@@ -68,13 +68,20 @@ typedef struct {
     uint16_t speed;
 } player_t;
 
+typedef enum {
+    BOMB_INACTIVE=0,
+    BOMB_PLANTED=1,
+    BOMB_EXPLODING=2
+} bomb_state_t;
+
 typedef struct {
-    bool active;
+    bomb_state_t state;
     uint8_t owner_id;
     uint16_t row;
     uint16_t col;
     uint8_t radius;
     uint16_t timer_ticks;
+    uint16_t explosion_ticks;
 } bomb_t;
 
 typedef enum {

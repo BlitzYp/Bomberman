@@ -165,6 +165,7 @@ static void* tick_thread_loop(void* arg)
         }
 
         //-- Process queued actions
+        bool map_change=false;
         action_t action;
         while (dequeue_action(&server->state,&action)==0) {
             if (action.type==ACTION_MOVE) {
@@ -176,10 +177,10 @@ static void* tick_thread_loop(void* arg)
             else if (action.type==ACTION_BOMB) {
                 // TODO: BOMB ACTION
                 // player_slot_t* slot=&server->state.players[action.player_id];
-                bomb_t* slot=&server->state.bombs[action.player_id];
-                // if (slot->timer_ticks>0 || !slot->active) continue;
-                handle_action_bomb(server,slot,action);
-                bomb_placed_players[slot->owner_id]=true;
+                bomb_t* bomb=&server->state.bombs[action.player_id];
+                handle_action_bomb(server,bomb,action);
+                bomb_placed_players[bomb->owner_id]=true;
+                map_change=true;
             }
         }
 
@@ -189,8 +190,14 @@ static void* tick_thread_loop(void* arg)
         // -- resolve explosions
         collect_bomb_events(server,exploding_bombs,end_exploding_bombs);
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (exploding_bombs[i]) apply_explosion_start(server,&server->state.bombs[i]);
-            if (end_exploding_bombs[i]) apply_explosion_end(server,&server->state.bombs[i]);
+            if (exploding_bombs[i]) {
+                apply_explosion_start(server,&server->state.bombs[i]);
+                map_change=true;
+            }
+            if (end_exploding_bombs[i]) {
+                apply_explosion_end(server,&server->state.bombs[i]);
+                map_change=true;
+            }
         }
 
         // - detect deaths
@@ -199,9 +206,14 @@ static void* tick_thread_loop(void* arg)
 
         // Send move message to all here to avoid deadlock situation
         send_move_broadcast(server,moved_players);
+
+        // All of the map changes are recorded when we broadcast the new map, we can use these functions later for sound effects maybe
+        // For now I think we should discard them in the client
         send_bomb_broadcast(server,bomb_placed_players);
         send_exploding_broadcast(server,exploding_bombs);
         send_end_explode_broadcast(server,end_exploding_bombs);
+
+        if (map_change) broadcast_map(server);
     }
     return NULL;
 }

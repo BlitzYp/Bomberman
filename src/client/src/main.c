@@ -191,7 +191,7 @@ static int recv_map_payload(int fd, client_game_t* game)
             return -1;
         }
 
-        if (tile>TILE_SOFT_BLOCK) {
+        if (tile>TILE_BOMB_EXPLODE) {
             free(tiles);
             return -1;
         }
@@ -239,142 +239,33 @@ static int recv_player_move_payload(int fd, WINDOW* win, client_game_t* game)
     return 0;
 }
 
-static int recv_player_bomb_payload(int fd, WINDOW* win, client_game_t* game)
+static int discard_bomb_payload(int fd)
 {
     uint8_t player_id;
     uint16_t cell_index;
-    uint16_t row;
-    uint16_t col;
 
     if (recv_u8(fd, &player_id) < 0) return -1;
     if (recv_u16_be(fd, &cell_index) < 0) return -1;
-    if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
-
-    row=cell_index/game->cols;
-    col=cell_index%game->cols;
-    if (row>=game->rows || col>=game->cols) return -1;
-
-    game->tiles[cell_index]=TILE_BOMB;
-    // game->tiles[player_id].known=true;
-    // game->tiles[player_id].row=row;
-    // game->players[player_id].col=col;
 
     return 0;
 }
 
-static int recv_bomb_start_payload(int fd, WINDOW* win, client_game_t* game)
+static int discard_explosion_start_payload(int fd)
 {
     uint8_t radius;
     uint16_t cell_index;
-    uint16_t row;
-    uint16_t col;
 
     if (recv_u8(fd, &radius) < 0) return -1;
     if (recv_u16_be(fd, &cell_index) < 0) return -1;
-    // if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
-
-    row=cell_index/game->cols;
-    col=cell_index%game->cols;
-    if (row>=game->rows || col>=game->cols) return -1;
-
-    game->tiles[cell_index]=TILE_BOMB_EXPLODE;
-    int index=0;
-    for (int i = 1; i < radius+1; i++) {
-        index=cell_index+i;
-        if (cell_index/game->cols != index/game->cols) break;
-        if (game->tiles[index]!=TILE_HARD_WALL) {
-            game->tiles[index]=TILE_BOMB_EXPLODE;    
-        } else if (game->tiles[index]==TILE_HARD_WALL) {
-            break;
-        }
-    }
-    for (int i = 1; i < radius+1; i++) {
-        index=cell_index+i*game->cols;
-        if (cell_index%game->cols != index%game->cols) break;
-        if (game->tiles[index]!=TILE_HARD_WALL) {
-            game->tiles[index]=TILE_BOMB_EXPLODE;    
-        } else if (game->tiles[index]==TILE_HARD_WALL) {
-            break;    
-        }
-    }
-    for (int i = -1; i > (-1*(radius+1)); i--) {
-        index=cell_index+i;
-        if (cell_index/game->cols != index/game->cols) break;
-        if (game->tiles[index]!=TILE_HARD_WALL) {
-            game->tiles[index]=TILE_BOMB_EXPLODE;    
-        } else if (game->tiles[index]==TILE_HARD_WALL) {
-            break;    
-        }
-    }
-    for (int i = -1; i > (-1*(radius+1)); i--) {
-        index=cell_index+i*game->cols;
-        if (cell_index%game->cols != index%game->cols) break;
-        if (game->tiles[index]!=TILE_HARD_WALL) {
-            game->tiles[index]=TILE_BOMB_EXPLODE;    
-        } else if (game->tiles[index]==TILE_HARD_WALL) {
-            break;
-        }
-    }
-    // printf("index %d\n", cell_index);
-    // printf("rad %d\n", -1*(radius+1));
-    // printf("rad %d\n", radius);
-    // game->tiles[player_id].known=true;
-    // game->tiles[player_id].row=row;
-    // game->players[player_id].col=col;
 
     return 0;
 }
 
-static int recv_bomb_end_payload(int fd, WINDOW* win, client_game_t* game)
+static int discard_explosion_end_payload(int fd)
 {
     uint16_t cell_index;
-    uint16_t row;
-    uint16_t col;
 
     if (recv_u16_be(fd, &cell_index) < 0) return -1;
-    // if (player_id>=MAX_PLAYERS || game->cols==0) return -1;
-
-    row=cell_index/game->cols;
-    col=cell_index%game->cols;
-    if (row>=game->rows || col>=game->cols) return -1;
-
-    game->tiles[cell_index]=TILE_EMPTY;
-    int index=1;
-    while(true)
-    {
-        if (game->tiles[cell_index+index]==TILE_BOMB_EXPLODE) {
-            game->tiles[cell_index+index]=TILE_EMPTY;
-            index++;
-        }
-        if (game->tiles[cell_index+index]!=TILE_BOMB_EXPLODE) break;
-    }
-    index=-1;
-    while(true)
-    {
-        if (game->tiles[cell_index+index]==TILE_BOMB_EXPLODE) {
-            game->tiles[cell_index+index]=TILE_EMPTY;
-            index--;
-        }
-        if (game->tiles[cell_index+index]!=TILE_BOMB_EXPLODE) break;
-    }
-    index=1;
-    while(true)
-    {
-        if (game->tiles[cell_index+index*game->cols]==TILE_BOMB_EXPLODE) {
-            game->tiles[cell_index+index*game->cols]=TILE_EMPTY;
-            index++;
-        }
-        if (game->tiles[cell_index+index*game->cols]!=TILE_BOMB_EXPLODE) break;
-    }
-    index=-1;
-    while(true)
-    {
-        if (game->tiles[cell_index+index*game->cols]==TILE_BOMB_EXPLODE) {
-            game->tiles[cell_index+index*game->cols]=TILE_EMPTY;
-            index--;
-        }
-        if (game->tiles[cell_index+index*game->cols]!=TILE_BOMB_EXPLODE) break;
-    }
 
     return 0;
 }
@@ -394,16 +285,13 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
             redraw_game(win,game);
             return 0;
         case MSG_BOMB:
-            if (recv_player_bomb_payload(fd,win,game)!=0) return -1;
-            redraw_game(win,game);
+            if (discard_bomb_payload(fd)!=0) return -1;
             return 0;
         case MSG_EXPLOSION_START:
-            if (recv_bomb_start_payload(fd,win,game)!=0) return -1;
-            redraw_game(win,game);
+            if (discard_explosion_start_payload(fd)!=0) return -1;
             return 0;
         case MSG_EXPLOSION_END:
-            if (recv_bomb_end_payload(fd,win,game)!=0) return -1;
-            redraw_game(win,game);
+            if (discard_explosion_end_payload(fd)!=0) return -1;
             return 0;
         default: return -1;
     }

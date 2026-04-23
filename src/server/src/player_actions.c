@@ -69,9 +69,9 @@ int handle_move(server_t* server,int client_fd,uint8_t slot_id,msg_header_t head
     return 0;
 }
 
-void handle_action_bomb(server_t* server,bomb_t* slot,action_t action)
+void handle_action_bomb(server_t* server,bomb_t* bomb,action_t action)
 {
-    // int x=slot->col,y=slot->row;
+    // int x=bomb->col,y=bomb->row;
     int x=0,y=0;
     y=action.cell_index/server->state.map.cols;
     x=action.cell_index%server->state.map.cols;
@@ -80,12 +80,13 @@ void handle_action_bomb(server_t* server,bomb_t* slot,action_t action)
         // Check collision with other players
         if (map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x)) {
             server->state.map.tiles[action.cell_index]=TILE_BOMB;
-            slot->active=1;
-            slot->col=x;
-            slot->row=y;
-            slot->owner_id=action.player_id;
-            slot->radius=server->state.players[action.player_id].p.bomb_radius;
-            slot->timer_ticks=server->state.players[action.player_id].p.bomb_timer_ticks;
+            bomb->state=BOMB_PLANTED;
+            bomb->col=x;
+            bomb->row=y;
+            bomb->owner_id=action.player_id;
+            bomb->radius=server->state.players[action.player_id].p.bomb_radius;
+            bomb->timer_ticks=server->state.players[action.player_id].p.bomb_timer_ticks;
+            bomb->explosion_ticks=0;
         }
     }
 }

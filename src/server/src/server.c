@@ -159,12 +159,18 @@ static void* tick_thread_loop(void* arg)
         bool exploding_bombs[MAX_PLAYERS]={0};
         bool end_exploding_bombs[MAX_PLAYERS]={0};
         bool dead_players[MAX_PLAYERS]={0};
+        bool winner_found=false;
+        uint8_t winner_id=SERVER_TARGET_ID;
+        bool game_end=false;
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
             break;
         }
-
+        if (server->state.status!=GAME_RUNNING) {
+            pthread_mutex_unlock(&server->state.mutex);
+            continue;
+        }
         //-- Process queued actions
         bool map_change=false;
         action_t action;
@@ -176,12 +182,11 @@ static void* tick_thread_loop(void* arg)
                 moved_players[slot->id]=true;
             }
             else if (action.type==ACTION_BOMB) {
-                // TODO: BOMB ACTION
-                // player_slot_t* slot=&server->state.players[action.player_id];
                 bomb_t* bomb=&server->state.bombs[action.player_id];
-                handle_action_bomb(server,bomb,action);
-                bomb_placed_players[bomb->owner_id]=true;
-                map_change=true;
+                if (handle_action_bomb(server,bomb,action)) {
+                    bomb_placed_players[bomb->owner_id]=true;
+                    map_change=true;
+                }
             }
         }
 
@@ -201,16 +206,30 @@ static void* tick_thread_loop(void* arg)
             }
         }
 
-        // - detect deaths
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            player_slot_t* p=&server->state.players[i];
-            if (!p->connected || !p->alive) continue;
+        uint8_t alive_count=0,last_alive_player=SERVER_TARGET_ID;
+        // - detect deaths and count alive players
+        if (server->state.status==GAME_RUNNING) {
+            for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+                player_slot_t* p=&server->state.players[i];
+                if (!p->connected || !p->alive) continue;
 
-            uint16_t cell=make_cell_index(p->p.row,p->p.col,server->state.map.cols);
-            if (server->state.map.tiles[cell]==TILE_BOMB_EXPLODE) {
-                p->alive=false;
-                p->p.alive=false;
-                dead_players[i]=true;
+                uint16_t cell=make_cell_index(p->p.row,p->p.col,server->state.map.cols);
+                if (server->state.map.tiles[cell]==TILE_BOMB_EXPLODE) {
+                    p->alive=false;
+                    p->p.alive=false;
+                    dead_players[i]=true;
+                    continue;
+                }
+                alive_count++;
+                last_alive_player=i;
+            }
+            if (alive_count<=1) {
+                server->state.status=GAME_END;
+                game_end=true;
+                if (alive_count==1) {
+                    winner_found=true;
+                    winner_id=last_alive_player;
+                }
             }
         }
 
@@ -227,6 +246,8 @@ static void* tick_thread_loop(void* arg)
         send_end_explode_broadcast(server,end_exploding_bombs);
         send_death_broadcast(server,dead_players);
 
+        if (game_end) send_status_broadcast(server,GAME_END);
+        if (winner_found) send_winner_broadcast(server, winner_id);
         if (map_change) broadcast_map(server);
     }
     return NULL;
@@ -325,6 +346,10 @@ static void* client_thread_main(void* arg)
                     send_disconnect(client_fd,slot_id);
                     connection_active=false;
                 }
+                break;
+            case MSG_SET_READY:
+                if (handle_set_ready(server,slot_id)<0) printf("Ignoring SET_READY from slot %u in invalid state\n",slot_id);
+
                 break;
             case MSG_LEAVE:
                 connection_active=false;

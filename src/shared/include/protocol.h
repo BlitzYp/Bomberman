@@ -49,4 +49,17 @@ typedef struct {
     uint8_t player_id;
 } msg_death_t;
 
+typedef struct {
+    msg_header_t header;
+    uint8_t player_id;
+} msg_winner_t;
+
+typedef struct {
+    msg_header_t header;
+} msg_set_ready_t;
+
+typedef struct {
+    msg_header_t header;
+    uint8_t status;
+} msg_set_status_t;
 #endif

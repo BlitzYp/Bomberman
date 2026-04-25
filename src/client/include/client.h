@@ -10,6 +10,7 @@ typedef struct {
     bool alive;
     uint16_t row;
     uint16_t col;
+    char name[MAX_NAME_LEN+1];
 } client_player_t;
 
 typedef struct {
@@ -17,5 +18,8 @@ typedef struct {
     uint16_t cols;
     tile_t* tiles;
     client_player_t players[MAX_PLAYERS];
+    game_status_t status;
+    bool has_winner;
+    uint8_t winner_id;
 } client_game_t;
 #endif

@@ -44,10 +44,12 @@ typedef struct {
     action_queue_t action_queue;
     pthread_mutex_t mutex;
     map_t map;
+    map_t initial_map;
 } game_state_t;
 
 int game_state_init(game_state_t* state);
 void game_state_destroy(game_state_t* state);
+int game_state_reset_round(game_state_t* state);
 
 int enqueue_action(game_state_t* state,action_t action);
 int dequeue_action(game_state_t* state,action_t* action);

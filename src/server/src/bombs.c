@@ -28,6 +28,11 @@ void collect_bomb_events(server_t* server, bool* exploding_bombs, bool* end_expl
             bomb->state=BOMB_EXPLODING;
             bomb->explosion_ticks=EXPLOSION_DURATION_TICKS;
         } else if (bomb->state==BOMB_EXPLODING && bomb->explosion_ticks==0) {
+            uint8_t owner_id=bomb->owner_id;
+            if (owner_id<MAX_PLAYERS) {
+                player_slot_t* slot=&server->state.players[owner_id];
+                if (slot->p.bomb_count<1) slot->p.bomb_count++;
+            }
             end_exploding_bombs[i]=true;
             bomb->state=BOMB_INACTIVE;
             bomb->timer_ticks=0;

@@ -89,7 +89,18 @@ static int send_player_bomb(int fd)
     return 0;
 }
 
-static int recv_welcome(int fd)
+static int send_set_ready(int fd)
+{
+    msg_set_ready_t msg;
+
+    msg.header.msg_type=MSG_SET_READY;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=SERVER_TARGET_ID;
+
+    return send_header(fd,&msg.header);
+}
+
+static int recv_welcome(int fd, client_game_t* game)
 {
     msg_header_t header;
     char server_id[MAX_CLIENT_ID_LEN + 1];
@@ -104,6 +115,7 @@ static int recv_welcome(int fd)
 
     if (recv_u8(fd, &status) < 0) return -1;
     if (recv_u8(fd, &player_count) < 0) return -1;
+    game->status=(game_status_t)status;
 
     printf("WELCOME\n");
     printf("assigned_id=%u\n", header.sender_id);
@@ -119,9 +131,12 @@ static int recv_welcome(int fd)
         if (recv_u8(fd, &id) < 0) return -1;
         if (recv_u8(fd, &ready) < 0) return -1;
         if (read_exact(fd, name, MAX_NAME_LEN) < 0) return -1;
+        if (id>=MAX_PLAYERS) return -1;
         name[MAX_NAME_LEN] = '\0';
 
         printf("player[%u]: id=%u ready=%u name=%s\n", i, id, ready, name);
+        strcpy(game->players[id].name,name);
+        game->players[id].name[MAX_NAME_LEN]='\0';
     }
 
     return 0;
@@ -160,6 +175,29 @@ static void draw_map(WINDOW* map_wind, const client_game_t* game)
     wrefresh(map_wind);
 }
 
+static void draw_footer(const client_game_t* game)
+{
+    move((int)game->rows+3,0);
+    clrtoeol();
+
+    if (game->has_winner) {
+        const char* winner_name=game->players[game->winner_id].name;
+        if (winner_name[0]=='\0') winner_name="Unknown";
+        printw("Game over! Winner is %s! Press r to restart",winner_name);
+    }
+    else if (game->status==GAME_LOBBY) {
+        printw("Status: %u | Press r to ready",(unsigned)game->status);
+    }
+    else if (game->status==GAME_END) {
+        printw("Game over! Press r to restart");
+    }
+    else {
+        printw("Status: %u",(unsigned)game->status);
+    }
+
+    refresh();
+}
+
 static void redraw_game(WINDOW* win, const client_game_t* game)
 {
     draw_map(win,game);
@@ -171,6 +209,7 @@ static void redraw_game(WINDOW* win, const client_game_t* game)
     }
 
     wrefresh(win);
+    draw_footer(game);
 }
 
 static int recv_map_payload(int fd, client_game_t* game)
@@ -284,6 +323,32 @@ static int discard_explosion_end_payload(int fd)
     return 0;
 }
 
+static int recv_winner_payload(int fd,client_game_t* game)
+{
+    uint8_t player_id;
+    if (recv_u8(fd,&player_id)<0) return -1;
+    if (player_id>=MAX_PLAYERS) return -1;
+
+    game->has_winner=true;
+    game->winner_id=player_id;
+    return 0;
+}
+
+static int recv_status_payload(int fd, client_game_t* game)
+{
+    uint8_t status;
+
+    if (recv_u8(fd,&status)<0) return -1;
+    if (status>GAME_END) return -1;
+
+    game->status=(game_status_t)status;
+    if (game->status!=GAME_END) {
+        game->has_winner=false;
+        game->winner_id=SERVER_TARGET_ID;
+    }
+    return 0;
+}
+
 // PROCESS SERVER EVENTS HERE
 static int process_server_message(int fd, WINDOW* win, client_game_t* game)
 {
@@ -292,6 +357,10 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
     switch (header.msg_type) {
         case MSG_DISCONNECT:
             return 1;
+        case MSG_SET_STATUS:
+            if (recv_status_payload(fd,game)!=0) return -1;
+            draw_footer(game);
+            return 0;
         case MSG_LEAVE:
             if (header.sender_id>=MAX_PLAYERS) return -1;
             game->players[header.sender_id].known=false;
@@ -318,6 +387,10 @@ static int process_server_message(int fd, WINDOW* win, client_game_t* game)
         case MSG_DEATH:
             if (recv_death_payload(fd,game)!=0) return -1;
             redraw_game(win,game);
+            return 0;
+        case MSG_WINNER:
+            if (recv_winner_payload(fd,game)!=0) return -1;
+            draw_footer(game);
             return 0;
         default: return -1;
     }
@@ -364,7 +437,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    if (recv_welcome(fd) < 0) {
+    if (recv_welcome(fd,&game) < 0) {
         fprintf(stderr, "recv WELCOME failed\n");
         close(fd);
         return 1;
@@ -451,22 +524,37 @@ int main(int argc, char** argv)
 
         switch (ch) {
             case KEY_UP:
+                if (game.status!=GAME_RUNNING) continue;
                 dir = DIR_UP;
                 break;
             case KEY_DOWN:
+                if (game.status!=GAME_RUNNING) continue;
                 dir = DIR_DOWN;
                 break;
             case KEY_LEFT:
+                if (game.status!=GAME_RUNNING) continue;
                 dir = DIR_LEFT;
                 break;
             case KEY_RIGHT:
+                if (game.status!=GAME_RUNNING) continue;
                 dir = DIR_RIGHT;
                 break;
             case ' ':
+                if (game.status!=GAME_RUNNING) continue;
                 dir = -1;
                 if (send_player_bomb(fd) < 0) {
                     end_wind(mainwind, map_wind);
                     fprintf(stderr, "send bomb failed\n");
+                    close(fd);
+                    free(game.tiles);
+                    return 1;
+                }
+                break;
+            case 'r':
+                dir=-1;
+                if (send_set_ready(fd) < 0) {
+                    end_wind(mainwind, map_wind);
+                    fprintf(stderr, "send ready failed\n");
                     close(fd);
                     free(game.tiles);
                     return 1;
@@ -490,7 +578,7 @@ int main(int argc, char** argv)
                 free(game.tiles);
                 return 1;
             }
-        }    
+        }
     }
 
     end_wind(mainwind, map_wind);

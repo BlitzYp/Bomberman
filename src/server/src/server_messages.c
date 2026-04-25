@@ -215,8 +215,9 @@ int send_bomb(server_t* server, uint8_t slot_id)
         pthread_mutex_unlock(&server->state.mutex);
         return -1;
     }
-    slot->p.bomb_count--;
-    uint16_t cell_index=make_cell_index(slot->p.row,slot->p.col,server->state.map.cols);
+
+    bomb_t* bomb_state=&server->state.bombs[slot_id];
+    uint16_t cell_index=make_cell_index(bomb_state->row,bomb_state->col,server->state.map.cols);
 
     uint8_t client_count=0;
     int client_fd[MAX_PLAYERS];
@@ -365,6 +366,66 @@ int send_explode_end(server_t* server, bomb_t* bomb)
     for (uint8_t i=0;i<client_count;i++) {
         if (send_header(client_fd[i],&explosion.header)<0) return -1;
         if (send_u16_be(client_fd[i],explosion.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_winner_broadcast(server_t* server, uint8_t player_id)
+{
+    if (!server || player_id>=MAX_PLAYERS) return -1;
+
+    msg_winner_t winner;
+    winner.player_id=player_id;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    winner.header.msg_type=MSG_WINNER;
+    winner.header.sender_id=player_id;
+    winner.header.target_id=BROADCAST_TARGET_ID;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&winner.header)<0) return -1;
+        if (send_u8(client_fd[i],winner.player_id)<0) return -1;
+    }
+
+    return 0;
+}
+
+
+int send_status_broadcast(server_t* server,game_status_t status)
+{
+
+    if (!server) return -1;
+
+    msg_set_status_t state;
+    state.status=status;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    state.header.msg_type=MSG_SET_STATUS;
+    state.header.sender_id=SERVER_TARGET_ID;
+    state.header.target_id=BROADCAST_TARGET_ID;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&state.header)<0) return -1;
+        if (send_u8(client_fd[i],state.status)<0) return -1;
     }
 
     return 0;

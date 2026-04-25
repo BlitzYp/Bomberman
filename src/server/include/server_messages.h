@@ -27,4 +27,7 @@ void send_end_explode_broadcast(server_t* server, bool* end_exploding_bombs);
 int send_death(server_t* server, uint8_t player_id);
 void send_death_broadcast(server_t* server, bool* dead_players);
 
+int send_winner_broadcast(server_t* server, uint8_t player_id);
+
+int send_status_broadcast(server_t* server,game_status_t status);
 #endif

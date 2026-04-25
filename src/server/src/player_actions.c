@@ -3,6 +3,7 @@
 #include "../include/server.h"
 #include "../../shared/include/map_loader.h"
 #include "../../shared/include/net_utils.h"
+#include "../include/server_messages.h"
 
 #include <pthread.h>
 
@@ -60,6 +61,10 @@ int handle_move(server_t* server,int client_fd,uint8_t slot_id,msg_header_t head
     action.cell_index=0;
 
     pthread_mutex_lock(&server->state.mutex);
+    if (server->state.status!=GAME_RUNNING) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return 0;
+    }
     if (enqueue_action(&server->state,action)!=0) {
         pthread_mutex_unlock(&server->state.mutex);
         return -1;
@@ -69,26 +74,31 @@ int handle_move(server_t* server,int client_fd,uint8_t slot_id,msg_header_t head
     return 0;
 }
 
-void handle_action_bomb(server_t* server,bomb_t* bomb,action_t action)
+bool handle_action_bomb(server_t* server,bomb_t* bomb,action_t action)
 {
-    // int x=bomb->col,y=bomb->row;
+    if (!server || !bomb || action.player_id>=MAX_PLAYERS) return false;
+    player_slot_t* slot=&server->state.players[action.player_id];
+    if (!slot->connected || !slot->alive) return false;
+
+    if (!slot->p.bomb_count || bomb->state!=BOMB_INACTIVE) return false;
+
     int x=0,y=0;
     y=action.cell_index/server->state.map.cols;
     x=action.cell_index%server->state.map.cols;
 
-    if (y>=0 && x>=0 && y<server->state.map.rows && x<server->state.map.cols) {
-        // Check collision with other players
-        if (map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x)) {
-            server->state.map.tiles[action.cell_index]=TILE_BOMB;
-            bomb->state=BOMB_PLANTED;
-            bomb->col=x;
-            bomb->row=y;
-            bomb->owner_id=action.player_id;
-            bomb->radius=server->state.players[action.player_id].p.bomb_radius;
-            bomb->timer_ticks=server->state.players[action.player_id].p.bomb_timer_ticks;
-            bomb->explosion_ticks=0;
-        }
-    }
+    if (y<0 || x<0 || y>=server->state.map.rows || x>=server->state.map.cols) return false;
+    if (!map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x)) return false;
+
+    server->state.map.tiles[action.cell_index]=TILE_BOMB;
+    bomb->state=BOMB_PLANTED;
+    bomb->col=x;
+    bomb->row=y;
+    bomb->owner_id=action.player_id;
+    bomb->radius=server->state.players[action.player_id].p.bomb_radius;
+    bomb->timer_ticks=server->state.players[action.player_id].p.bomb_timer_ticks;
+    bomb->explosion_ticks=0;
+    slot->p.bomb_count--;
+    return true;
 }
 
 int handle_bomb(server_t* server,int client_fd,uint8_t slot_id,msg_header_t header)
@@ -102,16 +112,18 @@ int handle_bomb(server_t* server,int client_fd,uint8_t slot_id,msg_header_t head
 
     // if (server->state.players[slot_id].p.bomb_count<1) return -1;
 
-    col=server->state.players[slot_id].p.col;
-    row=server->state.players[slot_id].p.row;
-    uint16_t cell_index=make_cell_index(row, col, server->state.map.cols);
-
     action.player_id=slot_id;
     action.type=ACTION_BOMB;
     action.direction=dir;
-    action.cell_index=cell_index;
 
     pthread_mutex_lock(&server->state.mutex);
+    if (server->state.status!=GAME_RUNNING) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return 0;
+    }
+    col=server->state.players[slot_id].p.col;
+    row=server->state.players[slot_id].p.row;
+    action.cell_index=make_cell_index(row, col, server->state.map.cols);
     if (enqueue_action(&server->state,action)!=0) {
         pthread_mutex_unlock(&server->state.mutex);
         return -1;

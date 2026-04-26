@@ -208,28 +208,26 @@ static void* tick_thread_loop(void* arg)
 
         uint8_t alive_count=0,last_alive_player=SERVER_TARGET_ID;
         // - detect deaths and count alive players
-        if (server->state.status==GAME_RUNNING) {
-            for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-                player_slot_t* p=&server->state.players[i];
-                if (!p->connected || !p->alive) continue;
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            player_slot_t* p=&server->state.players[i];
+            if (!p->connected || !p->alive) continue;
 
-                uint16_t cell=make_cell_index(p->p.row,p->p.col,server->state.map.cols);
-                if (server->state.map.tiles[cell]==TILE_BOMB_EXPLODE) {
-                    p->alive=false;
-                    p->p.alive=false;
-                    dead_players[i]=true;
-                    continue;
-                }
-                alive_count++;
-                last_alive_player=i;
+            uint16_t cell=make_cell_index(p->p.row,p->p.col,server->state.map.cols);
+            if (server->state.map.tiles[cell]==TILE_BOMB_EXPLODE) {
+                p->alive=false;
+                p->p.alive=false;
+                dead_players[i]=true;
+                continue;
             }
-            if (alive_count<=1) {
-                server->state.status=GAME_END;
-                game_end=true;
-                if (alive_count==1) {
-                    winner_found=true;
-                    winner_id=last_alive_player;
-                }
+            alive_count++;
+            last_alive_player=i;
+        }
+        if (alive_count<=1) {
+            server->state.status=GAME_END;
+            game_end=true;
+            if (alive_count==1) {
+                winner_found=true;
+                winner_id=last_alive_player;
             }
         }
 

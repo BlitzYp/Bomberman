@@ -39,6 +39,7 @@ typedef enum {
     MSG_PONG = 4,
     MSG_LEAVE = 5,
     MSG_ERROR = 6,
+    MSG_PLAYER_JOINED = 8,
     MSG_SET_READY = 10,
     MSG_SET_STATUS = 20,
     MSG_MAP = 7,
@@ -96,6 +97,7 @@ typedef struct {
     uint16_t rows;
     uint16_t cols;
     tile_t* tiles;
+    bonus_type_t* bonuses;
     uint16_t spawn_cells[MAX_PLAYERS];
     uint8_t spawn_count;
 } map_t;

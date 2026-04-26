@@ -45,6 +45,7 @@ typedef struct {
     pthread_mutex_t mutex;
     map_t map;
     map_t initial_map;
+    bonus_type_t* bonuses;
 } game_state_t;
 
 int game_state_init(game_state_t* state);

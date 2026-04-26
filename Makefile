@@ -17,12 +17,16 @@ SERVER_SRCS := \
 	src/server/src/server_messages.c \
 	src/server/src/game_state.c \
 	src/server/src/player_actions.c \
+	src/server/src/bonuses.c \
 	src/shared/src/map_loader.c \
 	src/shared/src/net_utils.c
 
 SERVER_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SERVER_SRCS))
 
 CLIENT_SRCS := \
+	src/client/src/client_net.c \
+	src/client/src/client_protocol.c \
+	src/client/src/client_ui.c \
 	src/client/src/main.c \
 	src/shared/src/map_loader.c \
 	src/shared/src/net_utils.c

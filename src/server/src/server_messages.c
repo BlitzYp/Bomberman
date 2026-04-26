@@ -90,6 +90,44 @@ int send_leave_broadcast(server_t* server, uint8_t leaving_player_id)
     return result;
 }
 
+int send_player_joined_broadcast(server_t* server, uint8_t joined_player_id)
+{
+    msg_player_joined_t msg;
+    int client_fds[MAX_PLAYERS];
+    uint8_t client_count=0;
+
+    if (!server || joined_player_id>=MAX_PLAYERS) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    player_slot_t* joined_player=&server->state.players[joined_player_id];
+    if (!joined_player->connected) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+
+    msg.player_id=joined_player_id;
+    memcpy(msg.player_name,joined_player->name,MAX_NAME_LEN);
+
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* player=&server->state.players[i];
+        if (!player->connected || i==joined_player_id) continue;
+        client_fds[client_count++]=player->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    msg.header.msg_type=MSG_PLAYER_JOINED;
+    msg.header.sender_id=joined_player_id;
+    msg.header.target_id=BROADCAST_TARGET_ID;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fds[i],&msg.header)<0) return -1;
+        if (send_u8(client_fds[i],msg.player_id)<0) return -1;
+        if (write_exact(client_fds[i],msg.player_name,MAX_NAME_LEN)<0) return -1;
+    }
+
+    return 0;
+}
+
 int send_map(int client_fd, uint8_t target_id, const map_t* map)
 {
     msg_header_t header;
@@ -403,7 +441,6 @@ int send_winner_broadcast(server_t* server, uint8_t player_id)
 
 int send_status_broadcast(server_t* server,game_status_t status)
 {
-
     if (!server) return -1;
 
     msg_set_status_t state;
@@ -429,4 +466,155 @@ int send_status_broadcast(server_t* server,game_status_t status)
     }
 
     return 0;
+}
+
+
+int send_bonus_available(server_t* server,uint16_t cell_index,bonus_type_t bonus)
+{
+    if (!server || bonus==BONUS_NONE) return -1;
+
+    msg_bonus_available_t msg;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    msg.header.msg_type=MSG_BONUS_AVAILABLE;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=BROADCAST_TARGET_ID;
+
+    msg.bonus_type=(uint8_t)bonus;
+    msg.cell_index=cell_index;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&msg.header)<0) return -1;
+        if (send_u8(client_fd[i],msg.bonus_type)<0) return -1;
+        if (send_u16_be(client_fd[i],msg.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index,bonus_type_t type)
+{
+    if (!server || type==BONUS_NONE || player_id>=MAX_PLAYERS) return -1;
+
+    msg_bonus_retrieved_t msg;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    msg.header.msg_type=MSG_BONUS_RETRIEVED;
+    msg.header.sender_id=player_id;
+    msg.header.target_id=BROADCAST_TARGET_ID;
+
+    msg.bonus_type=(uint8_t)type;
+    msg.cell_index=cell_index;
+    msg.player_id=player_id;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&msg.header)<0) return -1;
+        if (send_u8(client_fd[i],msg.player_id)<0) return -1;
+        if (send_u8(client_fd[i],msg.bonus_type)<0) return -1;
+        if (send_u16_be(client_fd[i],msg.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_all_bonuses(server_t* server,int client_fd,uint8_t target_id)
+{
+    msg_bonus_available_t msg;
+
+    if (!server || client_fd<0) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint16_t rows=server->state.map.rows;
+    uint16_t cols=server->state.map.cols;
+    uint32_t cell_count=(uint32_t)rows*cols;
+    bonus_type_t* bonuses=malloc(cell_count*sizeof(*bonuses));
+    if (!bonuses) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    memcpy(bonuses,server->state.bonuses,cell_count*sizeof(*bonuses));
+    pthread_mutex_unlock(&server->state.mutex);
+
+    msg.header.msg_type=MSG_BONUS_AVAILABLE;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=target_id;
+
+    for (uint32_t i=0;i<cell_count;i++) {
+        if (bonuses[i]==BONUS_NONE) continue;
+        msg.bonus_type=(uint8_t)bonuses[i];
+        msg.cell_index=(uint16_t)i;
+        if (send_header(client_fd,&msg.header)<0
+            || send_u8(client_fd,msg.bonus_type)<0
+            || send_u16_be(client_fd,msg.cell_index)<0) {
+            free(bonuses);
+            return -1;
+        }
+    }
+
+    free(bonuses);
+    return 0;
+}
+
+int broadcast_all_bonuses(server_t* server)
+{
+    int client_fd[MAX_PLAYERS];
+    uint8_t client_ids[MAX_PLAYERS];
+    uint8_t client_count=0;
+
+    if (!server) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count]=slot->socket_fd;
+        client_ids[client_count++]=slot->id;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_all_bonuses(server,client_fd[i],client_ids[i])!=0) return -1;
+    }
+
+    return 0;
+}
+
+void send_bonus_available_broadcast(server_t *server, bool* bonus_cells_changed,bonus_type_t* types)
+{
+    if (!server || !bonus_cells_changed || !types) return;
+    uint32_t cell_count;
+    pthread_mutex_lock(&server->state.mutex);
+    cell_count=(uint32_t)server->state.map.rows*server->state.map.cols;
+    pthread_mutex_unlock(&server->state.mutex);
+
+    for (uint32_t i=0;i<cell_count;i++) {
+        if (!bonus_cells_changed[i]) continue;
+        if (send_bonus_available(server,(uint16_t)i,types[i])!=0) printf("Error sending bonus available for cell %u\n",(unsigned)i);
+    }
+}
+
+void send_bonus_retrieved_broadcast(server_t* server,bool* collected_players,bonus_type_t* types,uint16_t* collected_cells)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!collected_players[i]) continue;
+        if (send_bonus_retrieved(server,i,collected_cells[i],types[i])!=0) printf("Error sending bonus retrieved for player %u\n",i);
+    }
 }

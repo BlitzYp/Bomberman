@@ -46,18 +46,28 @@ static bool valid_cell(map_t* map,int r,int c)
     return r>=0 && c>=0 && r<map->rows && c<map->cols;
 }
 
-bool mark_explosion_start_cell(map_t* map,int r,int c)
+static bool mark_explosion_start_cell(game_state_t* state,int r,int c,bool* spawned_bonus,bonus_type_t* spawned_type)
 {
     // false means explosion propagation ends in this cell
-    if (!valid_cell(map,r,c)) return false;
+    if (spawned_bonus) *spawned_bonus=false;
+    if (spawned_type) *spawned_type=BONUS_NONE;
+    if (!valid_cell(&state->map,r,c)) return false;
 
-    uint16_t cell=make_cell_index((uint16_t)r,(uint16_t)c,map->cols);
-    tile_t tile=map->tiles[cell];
+    uint16_t cell=make_cell_index((uint16_t)r,(uint16_t)c,state->map.cols);
+    tile_t tile=state->map.tiles[cell];
 
     if (tile==TILE_HARD_WALL) return false;
 
-    map->tiles[cell]=TILE_BOMB_EXPLODE;
-    if (tile==TILE_SOFT_BLOCK) return false;
+    state->map.tiles[cell]=TILE_BOMB_EXPLODE;
+    if (tile==TILE_SOFT_BLOCK) {
+        if (state->bonuses[cell]==BONUS_NONE) {
+            state->bonuses[cell]=BONUS_RADIUS;
+            if (spawned_bonus) *spawned_bonus=true;
+            if (spawned_type) *spawned_type=BONUS_RADIUS;
+        }
+
+        return false;
+    }
 
     return true;
 }
@@ -75,20 +85,29 @@ bool mark_explosion_end_cell(map_t* map,int r,int c)
     return true;
 }
 
-void apply_explosion_start(server_t* server, bomb_t* bomb)
+void apply_explosion_start(server_t* server, bomb_t* bomb,bool* bonus_cells_changed,bonus_type_t* available_cell_types)
 {
     // left,right,up,down
     int8_t dr[4]={0,0,-1,1};
     int8_t dc[4]={-1,1,0,0};
-    mark_explosion_start_cell(&server->state.map,bomb->row,bomb->col);
+    mark_explosion_start_cell(&server->state,bomb->row,bomb->col,NULL,NULL);
 
     for (uint8_t dir=0;dir<4;dir++) {
         for (uint8_t dist=1;dist<=bomb->radius;dist++) {
             int r=(int)bomb->row+dr[dir]*dist;
             int c=(int)bomb->col+dc[dir]*dist;
+            bool spawned_bonus=false;
+            bonus_type_t spawned_type=BONUS_NONE;
 
             // Attempt to start an explosion from this cell
-            if (!mark_explosion_start_cell(&server->state.map,r,c)) break;
+            if (!mark_explosion_start_cell(&server->state,r,c,&spawned_bonus,&spawned_type)) {
+                if (spawned_bonus) {
+                    uint16_t cell_index=make_cell_index((uint16_t)r,(uint16_t)c,server->state.map.cols);
+                    bonus_cells_changed[cell_index]=true;
+                    available_cell_types[cell_index]=spawned_type;
+                }
+                break;
+            }
         }
     }
 }

@@ -17,6 +17,12 @@ typedef struct {
 
 typedef struct {
     msg_header_t header;
+    uint8_t player_id;
+    char player_name[MAX_NAME_LEN];
+} msg_player_joined_t;
+
+typedef struct {
+    msg_header_t header;
     uint8_t direction;
 } msg_move_attempt_t;
 
@@ -62,4 +68,17 @@ typedef struct {
     msg_header_t header;
     uint8_t status;
 } msg_set_status_t;
+
+typedef struct {
+    msg_header_t header;
+    uint8_t bonus_type;
+    uint16_t cell_index;
+} msg_bonus_available_t;
+
+typedef struct {
+    msg_header_t header;
+    uint8_t player_id;
+    uint8_t bonus_type;
+    uint16_t cell_index;
+} msg_bonus_retrieved_t;
 #endif

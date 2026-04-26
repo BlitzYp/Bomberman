@@ -8,7 +8,7 @@
 
 static int map_clone(map_t* dst, const map_t* src)
 {
-    if (!dst || !src || !src->tiles) return -1;
+    if (!dst || !src || !src->tiles || !src->bonuses) return -1;
 
     memset(dst,0,sizeof(*dst));
     dst->rows=src->rows;
@@ -21,8 +21,29 @@ static int map_clone(map_t* dst, const map_t* src)
         memset(dst,0,sizeof(*dst));
         return -1;
     }
+    dst->bonuses=malloc((size_t)src->rows*src->cols*sizeof(*dst->bonuses));
+    if (!dst->bonuses) {
+        free(dst->tiles);
+        memset(dst,0,sizeof(*dst));
+        return -1;
+    }
 
     memcpy(dst->tiles,src->tiles,(size_t)src->rows*src->cols*sizeof(*dst->tiles));
+    memcpy(dst->bonuses,src->bonuses,(size_t)src->rows*src->cols*sizeof(*dst->bonuses));
+    return 0;
+}
+
+static int init_bonus_storage(game_state_t* state)
+{
+    size_t cell_count;
+
+    if (!state || !state->map.tiles) return -1;
+
+    cell_count=(size_t)state->map.rows*state->map.cols;
+    state->bonuses=malloc(cell_count*sizeof(*state->bonuses));
+    if (!state->bonuses) return -1;
+
+    memcpy(state->bonuses,state->map.bonuses,cell_count*sizeof(*state->bonuses));
     return 0;
 }
 
@@ -76,12 +97,19 @@ int game_state_init(game_state_t* state)
         pthread_mutex_destroy(&state->mutex);
         return -1;
     }
+    if (init_bonus_storage(state)!=0) {
+        map_destroy(&state->initial_map);
+        map_destroy(&state->map);
+        pthread_mutex_destroy(&state->mutex);
+        return -1;
+    }
     return 0;
 }
 
 void game_state_destroy(game_state_t* state)
 {
     pthread_mutex_destroy(&state->mutex);
+    free(state->bonuses);
     map_destroy(&state->map);
     map_destroy(&state->initial_map);
 }
@@ -91,16 +119,20 @@ int game_state_reset_round(game_state_t* state)
     if (!state || !state->map.tiles || !state->initial_map.tiles) return -1;
     if (state->map.rows!=state->initial_map.rows || state->map.cols!=state->initial_map.cols) return -1;
 
-    memcpy(state->map.tiles,
-        state->initial_map.tiles,
-        (size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.tiles));
+    // Tiles
+    memcpy(state->map.tiles,state->initial_map.tiles,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.tiles));
+    // Map bonuses
+    memcpy(state->map.bonuses,state->initial_map.bonuses,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.bonuses));
     state->map.rows=state->initial_map.rows;
     state->map.cols=state->initial_map.cols;
     state->map.spawn_count=state->initial_map.spawn_count;
+    // Spawn locations
     memcpy(state->map.spawn_cells,state->initial_map.spawn_cells,sizeof(state->map.spawn_cells));
 
     memset(state->bombs,0,sizeof(state->bombs));
     state->bomb_count=0;
+    // Game state bonuses
+    memcpy(state->bonuses,state->initial_map.bonuses,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->bonuses));
 
     state->action_queue.head=0;
     state->action_queue.tail=0;

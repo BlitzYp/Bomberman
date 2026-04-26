@@ -3,13 +3,17 @@
 #include "../include/server.h"
 #include "../../shared/include/map_loader.h"
 #include "../../shared/include/net_utils.h"
+#include "../include/bonuses.h"
 #include "../include/server_messages.h"
 
 #include <pthread.h>
 
-void handle_action_move(server_t* server,player_slot_t* slot,action_t action)
+void handle_action_move(server_t* server,player_slot_t* slot,action_t action,bonus_type_t* collected_type,uint16_t* collected_cell)
 {
     int x=slot->p.col,y=slot->p.row;
+    if (collected_type) *collected_type=BONUS_NONE;
+    if (collected_cell) *collected_cell=UINT16_MAX;
+
     switch (action.direction) {
         case DIR_LEFT:
             x--;
@@ -38,8 +42,15 @@ void handle_action_move(server_t* server,player_slot_t* slot,action_t action)
             }
         }
         if (map_is_walkable(&server->state.map,(uint16_t)y,(uint16_t)x) && valid) {
+            bonus_type_t res_bonus=BONUS_NONE;
+
             slot->p.row=y;
             slot->p.col=x;
+
+            if (collect_bonus_player(&server->state, slot, &res_bonus)>0) {
+                if (collected_type) *collected_type=res_bonus;
+                if (collected_cell) *collected_cell=make_cell_index(slot->p.row,slot->p.col,server->state.map.cols);
+            }
         }
     }
 }

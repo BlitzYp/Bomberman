@@ -127,25 +127,6 @@ void shutdown_server(server_t* server)
     game_state_destroy(&server->state);
 }
 
-/*
-    int broadcast_header(server_t* server, msg_header_t* header)
-    {
-        if (!server || !header) return -1;
-        int result=0;
-        pthread_mutex_lock(&server->state.mutex);
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            player_slot_t* player=&server->state.players[i];
-            if (!player->connected) continue;
-            if (send_header(player->socket_fd,header)<0) {
-                result=-1;
-                break;
-            }
-        }
-        pthread_mutex_unlock(&server->state.mutex);
-        return result;
-    }
- */
-
 // Makes the server operate at 20 ticks per second
 static void* tick_thread_loop(void* arg)
 {
@@ -159,9 +140,16 @@ static void* tick_thread_loop(void* arg)
         bool exploding_bombs[MAX_PLAYERS]={0};
         bool end_exploding_bombs[MAX_PLAYERS]={0};
         bool dead_players[MAX_PLAYERS]={0};
+
+        bool bonus_collected_players[MAX_PLAYERS]={0};
+        bonus_type_t collected_bonus_types[MAX_PLAYERS]={0};
+        uint16_t collected_bonus_cells[MAX_PLAYERS];
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) collected_bonus_cells[i]=UINT16_MAX;
+
         bool winner_found=false;
         uint8_t winner_id=SERVER_TARGET_ID;
         bool game_end=false;
+
         pthread_mutex_lock(&server->state.mutex);
         if (!server->state.running) {
             pthread_mutex_unlock(&server->state.mutex);
@@ -171,14 +159,27 @@ static void* tick_thread_loop(void* arg)
             pthread_mutex_unlock(&server->state.mutex);
             continue;
         }
+        uint32_t cell_count=(uint32_t)server->state.map.rows*server->state.map.cols;
+        bonus_type_t available_cell_types[cell_count];
+        bool bonus_cells_changed[cell_count];
+        memset(bonus_cells_changed,0,sizeof(bonus_cells_changed));
+        memset(available_cell_types,0,sizeof(available_cell_types));
         //-- Process queued actions
         bool map_change=false;
         action_t action;
         while (dequeue_action(&server->state,&action)==0) {
             if (action.type==ACTION_MOVE) {
                 player_slot_t* slot=&server->state.players[action.player_id];
+                bonus_type_t collected_bonus_type=BONUS_NONE;
+                uint16_t collected_bonus_cell=UINT16_MAX;
                 if (!slot->connected || !slot->alive) continue;
-                handle_action_move(server,slot,action);
+
+                handle_action_move(server,slot,action,&collected_bonus_type,&collected_bonus_cell);
+                if (collected_bonus_type!=BONUS_NONE) {
+                    bonus_collected_players[slot->id]=true;
+                    collected_bonus_types[slot->id]=collected_bonus_type;
+                    collected_bonus_cells[slot->id]=collected_bonus_cell;
+                }
                 moved_players[slot->id]=true;
             }
             else if (action.type==ACTION_BOMB) {
@@ -197,7 +198,7 @@ static void* tick_thread_loop(void* arg)
         collect_bomb_events(server,exploding_bombs,end_exploding_bombs);
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
             if (exploding_bombs[i]) {
-                apply_explosion_start(server,&server->state.bombs[i]);
+                apply_explosion_start(server,&server->state.bombs[i],bonus_cells_changed,available_cell_types);
                 map_change=true;
             }
             if (end_exploding_bombs[i]) {
@@ -242,7 +243,15 @@ static void* tick_thread_loop(void* arg)
         send_bomb_broadcast(server,bomb_placed_players);
         send_exploding_broadcast(server,exploding_bombs);
         send_end_explode_broadcast(server,end_exploding_bombs);
+
+        // - Send player alive statuses
         send_death_broadcast(server,dead_players);
+
+        // - Update bonuses for players
+        send_bonus_retrieved_broadcast(server,bonus_collected_players,collected_bonus_types,collected_bonus_cells);
+
+        // - Update avaialable bonuses
+        send_bonus_available_broadcast(server,bonus_cells_changed,available_cell_types);
 
         if (game_end) send_status_broadcast(server,GAME_END);
         if (winner_found) send_winner_broadcast(server, winner_id);

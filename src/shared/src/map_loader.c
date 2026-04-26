@@ -5,10 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int parse_tile_token(const char* token, tile_t* tile, bool* is_spawn, uint8_t* spawn_id)
+static int parse_tile_token(const char* token, tile_t* tile, bonus_type_t* bonus, bool* is_spawn, uint8_t* spawn_id)
 {
-    if (!token || !tile || !is_spawn || !spawn_id) return -1;
+    if (!token || !tile || !bonus || !is_spawn || !spawn_id) return -1;
 
+    *bonus=BONUS_NONE;
     *is_spawn=false;
     *spawn_id=0;
 
@@ -27,9 +28,21 @@ static int parse_tile_token(const char* token, tile_t* tile, bool* is_spawn, uin
         return 0;
     }
 
-    // Treat bonus like tokens like empty for now
-    if (strcmp(token,"A")==0 || strcmp(token,"R")==0 || strcmp(token,"T")==0) {
+    if (strcmp(token,"A")==0) {
         *tile=TILE_EMPTY;
+        *bonus=BONUS_SPEED;
+        return 0;
+    }
+
+    if (strcmp(token,"R")==0) {
+        *tile=TILE_EMPTY;
+        *bonus=BONUS_RADIUS;
+        return 0;
+    }
+
+    if (strcmp(token,"T")==0) {
+        *tile=TILE_EMPTY;
+        *bonus=BONUS_TIMER;
         return 0;
     }
 
@@ -51,6 +64,7 @@ void map_destroy(map_t* map)
     if (!map) return;
 
     free(map->tiles);
+    free(map->bonuses);
     memset(map,0,sizeof(*map));
 }
 
@@ -87,11 +101,13 @@ int map_load_from_file(const char* path, map_t* map)
     map->rows=rows;
     map->cols=cols;
     map->tiles=malloc((size_t)rows*cols*sizeof(*map->tiles));
-    if (!map->tiles) {
+    map->bonuses=malloc((size_t)rows*cols*sizeof(*map->bonuses));
+    if (!map->tiles || !map->bonuses) {
         fclose(file);
-        memset(map,0,sizeof(*map));
+        map_destroy(map);
         return -1;
     }
+    memset(map->bonuses,BONUS_NONE,(size_t)rows*cols*sizeof(*map->bonuses));
 
     for (uint8_t i=0;i<MAX_PLAYERS;i++) map->spawn_cells[i]=UINT16_MAX;
 
@@ -99,8 +115,10 @@ int map_load_from_file(const char* path, map_t* map)
         for (uint16_t c=0;c<cols;c++) {
             char token[16];
             tile_t tile;
+            bonus_type_t bonus;
             bool is_spawn;
             uint8_t spawn_id;
+            uint16_t cell;
 
             if (fscanf(file,"%15s",token)!=1) {
                 fclose(file);
@@ -108,15 +126,17 @@ int map_load_from_file(const char* path, map_t* map)
                 return -1;
             }
 
-            if (parse_tile_token(token,&tile,&is_spawn,&spawn_id)!=0) {
+            if (parse_tile_token(token,&tile,&bonus,&is_spawn,&spawn_id)!=0) {
                 fclose(file);
                 map_destroy(map);
                 return -1;
             }
 
-            map->tiles[make_cell_index(r,c,cols)]=tile;
+            cell=make_cell_index(r,c,cols);
+            map->tiles[cell]=tile;
+            map->bonuses[cell]=bonus;
             if (is_spawn) {
-                map->spawn_cells[spawn_id]=make_cell_index(r,c,cols);
+                map->spawn_cells[spawn_id]=cell;
                 if (spawn_id+1>map->spawn_count) map->spawn_count=(uint8_t)(spawn_id+1);
             }
         }

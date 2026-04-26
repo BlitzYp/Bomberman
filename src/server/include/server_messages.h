@@ -9,6 +9,7 @@
 int send_welcome(server_t* server, int client_fd, uint8_t slot_id);
 int send_disconnect(int client_fd, uint8_t target_id);
 int send_leave_broadcast(server_t* server, uint8_t leaving_player_id);
+int send_player_joined_broadcast(server_t* server, uint8_t joined_player_id);
 
 int send_map(int client_fd, uint8_t target_id, const map_t* map);
 int broadcast_map(server_t* server);
@@ -30,4 +31,12 @@ void send_death_broadcast(server_t* server, bool* dead_players);
 int send_winner_broadcast(server_t* server, uint8_t player_id);
 
 int send_status_broadcast(server_t* server,game_status_t status);
+
+int send_bonus_available(server_t* server,uint16_t cell_index,bonus_type_t bonus);
+int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index,bonus_type_t type);
+int send_all_bonuses(server_t* server,int client_fd,uint8_t target_id);
+int broadcast_all_bonuses(server_t* server);
+
+void send_bonus_available_broadcast(server_t *server, bool* bonus_cells_changed,bonus_type_t* types);
+void send_bonus_retrieved_broadcast(server_t* server,bool* collected_players,bonus_type_t* types,uint16_t* collected_cells);
 #endif

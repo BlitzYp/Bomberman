@@ -17,6 +17,7 @@ typedef struct {
     uint16_t rows;
     uint16_t cols;
     tile_t* tiles;
+    bonus_type_t* bonuses;
     client_player_t players[MAX_PLAYERS];
     game_status_t status;
     bool has_winner;

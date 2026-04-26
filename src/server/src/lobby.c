@@ -45,6 +45,9 @@ int handle_hello(server_t* server, int client_fd, uint8_t slot_id, msg_header_t 
     if (!valid_name) return -1;
     if (send_welcome(server,client_fd,slot_id)!=0) return -1;
     if (send_map(client_fd,slot_id,&server->state.map)!=0) return -1;
+    if (send_all_bonuses(server,client_fd,slot_id)!=0) return -1;
+    // Sends the name to other people
+    if (send_player_joined_broadcast(server,slot_id)!=0) return -1;
 
     for (uint8_t i=0;i<connected_count;i++) {
         if (send_move(server,connected_players[i])!=0) return -1;
@@ -94,6 +97,7 @@ int handle_set_ready(server_t* server,uint8_t slot_id)
     if (should_start) {
         if (send_status_broadcast(server,GAME_RUNNING)<0) return -1;
         if (broadcast_map(server)<0) return -1;
+        if (broadcast_all_bonuses(server)<0) return -1;
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
             if (send_move(server,i)!=0) continue;
         }

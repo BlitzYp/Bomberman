@@ -137,8 +137,8 @@ Default connection target is `127.0.0.1:1727`.
 
 High priority:
 
+- chain reactions when a bomb explosions triggers another bomb
 - clean up remaining bomb / explosion edge cases and behavior
-- decide whether bomb/explosion rendering should remain map-driven or move back to dedicated event handling on the client
 - decide and document the intended late-join behavior during `GAME_RUNNING`
 - add stronger validation for player names and lobby edge cases
 
@@ -147,8 +147,6 @@ Medium priority:
 - refactor large gameplay modules further as mechanics grow
 - improve round reset and end-state UX
 - add better disconnect/error handling paths
-- add protocol and gameplay tests
-- review temporary protocol extensions against the final course requirements
 
 Later:
 

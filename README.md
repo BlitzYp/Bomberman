@@ -162,4 +162,3 @@ Later:
   - `1 = GAME_RUNNING`
   - `2 = GAME_END`
 - Big-endian encoding is used for multibyte integer values on the wire.
-- This repo currently uses one extra protocol message, `MSG_PLAYER_JOINED`, to keep player names in sync for already connected clients.

@@ -68,18 +68,19 @@ int recv_welcome(int fd, client_game_t* game)
     return 0;
 }
 
-static int recv_player_joined_payload(int fd, client_game_t* game)
+static int recv_hello_payload(int fd, msg_header_t header, client_game_t* game)
 {
-    uint8_t player_id;
+    char client_id[MAX_CLIENT_ID_LEN + 1];
     char name[MAX_NAME_LEN + 1];
 
-    if (recv_u8(fd,&player_id)<0) return -1;
+    if (read_exact(fd,client_id,MAX_CLIENT_ID_LEN)<0) return -1;
     if (read_exact(fd,name,MAX_NAME_LEN)<0) return -1;
-    if (player_id>=MAX_PLAYERS) return -1;
+    if (header.sender_id>=MAX_PLAYERS) return -1;
 
+    client_id[MAX_CLIENT_ID_LEN]='\0';
     name[MAX_NAME_LEN]='\0';
-    strcpy(game->players[player_id].name,name);
-    game->players[player_id].name[MAX_NAME_LEN]='\0';
+    strcpy(game->players[header.sender_id].name,name);
+    game->players[header.sender_id].name[MAX_NAME_LEN]='\0';
 
     return 0;
 }
@@ -287,7 +288,7 @@ static int recv_bonus_retrieved_payload(int fd, client_game_t* game)
     mvprintw(
         game->rows+4,
         0,
-        "%s collected %s bonus at cell %u   ",
+        "%s collected %s bonus at cell %u",
         player_name,
         bonus_type_name((bonus_type_t)bonus_type),
         (unsigned)cell_index
@@ -305,8 +306,8 @@ int process_server_message(int fd, WINDOW* map_wind, client_game_t* game)
     switch (header.msg_type) {
         case MSG_DISCONNECT:
             return 1;
-        case MSG_PLAYER_JOINED:
-            if (recv_player_joined_payload(fd,game)!=0) return -1;
+        case MSG_HELLO:
+            if (recv_hello_payload(fd,header,game)!=0) return -1;
             return 0;
         case MSG_SET_STATUS:
             if (recv_status_payload(fd,game)!=0) return -1;

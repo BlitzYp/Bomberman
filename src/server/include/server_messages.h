@@ -9,7 +9,7 @@
 int send_welcome(server_t* server, int client_fd, uint8_t slot_id);
 int send_disconnect(int client_fd, uint8_t target_id);
 int send_leave_broadcast(server_t* server, uint8_t leaving_player_id);
-int send_player_joined_broadcast(server_t* server, uint8_t joined_player_id);
+int send_hello_broadcast(server_t* server, uint8_t joined_player_id, const char* client_id, const char* player_name);
 
 int send_map(int client_fd, uint8_t target_id, const map_t* map);
 int broadcast_map(server_t* server);

@@ -39,7 +39,6 @@ typedef enum {
     MSG_PONG = 4,
     MSG_LEAVE = 5,
     MSG_ERROR = 6,
-    MSG_PLAYER_JOINED = 8,
     MSG_SET_READY = 10,
     MSG_SET_STATUS = 20,
     MSG_MAP = 7,

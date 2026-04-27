@@ -90,23 +90,19 @@ int send_leave_broadcast(server_t* server, uint8_t leaving_player_id)
     return result;
 }
 
-int send_player_joined_broadcast(server_t* server, uint8_t joined_player_id)
+int send_hello_broadcast(server_t* server, uint8_t joined_player_id, const char* client_id, const char* player_name)
 {
-    msg_player_joined_t msg;
+    msg_hello_t msg;
     int client_fds[MAX_PLAYERS];
     uint8_t client_count=0;
 
-    if (!server || joined_player_id>=MAX_PLAYERS) return -1;
+    if (!server || joined_player_id>=MAX_PLAYERS || !client_id || !player_name) return -1;
 
     pthread_mutex_lock(&server->state.mutex);
-    player_slot_t* joined_player=&server->state.players[joined_player_id];
-    if (!joined_player->connected) {
+    if (!server->state.players[joined_player_id].connected) {
         pthread_mutex_unlock(&server->state.mutex);
         return -1;
     }
-
-    msg.player_id=joined_player_id;
-    memcpy(msg.player_name,joined_player->name,MAX_NAME_LEN);
 
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         player_slot_t* player=&server->state.players[i];
@@ -115,13 +111,16 @@ int send_player_joined_broadcast(server_t* server, uint8_t joined_player_id)
     }
     pthread_mutex_unlock(&server->state.mutex);
 
-    msg.header.msg_type=MSG_PLAYER_JOINED;
+    memset(&msg,0,sizeof(msg));
+    msg.header.msg_type=MSG_HELLO;
     msg.header.sender_id=joined_player_id;
     msg.header.target_id=BROADCAST_TARGET_ID;
+    memcpy(msg.client_id,client_id,MAX_CLIENT_ID_LEN);
+    memcpy(msg.player_name,player_name,MAX_NAME_LEN);
 
     for (uint8_t i=0;i<client_count;i++) {
         if (send_header(client_fds[i],&msg.header)<0) return -1;
-        if (send_u8(client_fds[i],msg.player_id)<0) return -1;
+        if (write_exact(client_fds[i],msg.client_id,MAX_CLIENT_ID_LEN)<0) return -1;
         if (write_exact(client_fds[i],msg.player_name,MAX_NAME_LEN)<0) return -1;
     }
 

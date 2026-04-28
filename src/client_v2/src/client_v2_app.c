@@ -1,4 +1,5 @@
 #include "../include/client_v2_app.h"
+#include "../include/client_v2_protocol.h"
 
 #include <raylib.h>
 #include <stdlib.h>
@@ -16,6 +17,13 @@ static const Color PLAYER_COLORS[MAX_PLAYERS]={
     PINK
 };
 
+static const char* player_name_or_unknown(const client_game_t* game,uint8_t player_id)
+{
+    if (!game || player_id>=MAX_PLAYERS) return "Unknown";
+    if (game->players[player_id].name[0]=='\0') return "Unknown";
+    return game->players[player_id].name;
+}
+
 static const char* status_name(game_status_t status)
 {
     switch (status) {
@@ -28,13 +36,6 @@ static const char* status_name(game_status_t status)
         default:
             return "UNKNOWN";
     }
-}
-
-static const char* player_name_or_unknown(const client_game_t* game,uint8_t player_id)
-{
-    if (!game || player_id>=MAX_PLAYERS) return "Unknown";
-    if (game->players[player_id].name[0]=='\0') return "Unknown";
-    return game->players[player_id].name;
 }
 
 void client_v2_app_init(client_v2_app_t* app)
@@ -173,22 +174,26 @@ void client_v2_app_draw(const client_v2_app_t* app)
     if (app->game.has_winner) {
         snprintf(detail_line,sizeof(detail_line),"Winner: %s",player_name_or_unknown(&app->game,app->game.winner_id));
         snprintf(controls_line,sizeof(controls_line),"Press R to return to lobby | ESC quit");
-    } else if (app->game.status==GAME_LOBBY) {
+    }
+    else if (app->game.status==GAME_LOBBY) {
         if (app->game.selected_map_name[0]!='\0') snprintf(detail_line,sizeof(detail_line),"Map: %s | %u rows x %u cols | players 2-8",app->game.selected_map_name,app->game.rows,app->game.cols);
         else snprintf(detail_line,sizeof(detail_line),"Map: (unknown)");
         snprintf(controls_line,sizeof(controls_line),"Lobby: [ ] change map | R ready | ESC quit");
-    } else if (app->game.status==GAME_END) {
+    }
+    else if (app->game.status==GAME_END) {
         snprintf(detail_line,sizeof(detail_line),"Game over");
         snprintf(controls_line,sizeof(controls_line),"Press R to restart | ESC quit");
-    } else if (app->game.status==GAME_RUNNING && app->game.waiting_for_next_round) {
+    }
+    else if (app->game.status==GAME_RUNNING && app->game.waiting_for_next_round) {
         snprintf(detail_line,sizeof(detail_line),"Waiting for next round");
         snprintf(controls_line,sizeof(controls_line),"ESC quit");
-    } else {
-        snprintf(controls_line,sizeof(controls_line),"Running: arrows move | SPACE bomb | ESC quit");
     }
+    else snprintf(controls_line,sizeof(controls_line),"Running: arrows move | SPACE bomb | ESC quit");
+
 
     footer_y=app->board_offset_y+app->game.rows*app->tile_draw_size+24;
     DrawText(status_line,40,footer_y,24,DARKGRAY);
-    if (detail_line[0]!='\0') DrawText(detail_line,40,footer_y+28,20,GRAY);
-    if (controls_line[0]!='\0') DrawText(controls_line,40,footer_y+54,20,GRAY);
+    if (detail_line[0]!='\0') DrawText(detail_line,40,footer_y+FOOTER_DETAIL_OFFSET,20,GRAY);
+    if (controls_line[0]!='\0') DrawText(controls_line,40,footer_y+FOOTER_CONTROLS_OFFSET,20,GRAY);
+    DrawText(app->game.announcement,40,footer_y+FOOTER_EVENT_OFFSET,20,GRAY);
 }

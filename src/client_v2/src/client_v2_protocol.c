@@ -6,6 +6,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+
+static const char* player_name_or_unknown(const client_game_t* game,uint8_t player_id)
+{
+    if (!game || player_id>=MAX_PLAYERS) return "Unknown";
+    if (game->players[player_id].name[0]=='\0') return "Unknown";
+    return game->players[player_id].name;
+}
 
 int client_v2_recv_welcome(int fd,client_game_t* game)
 {
@@ -107,6 +115,8 @@ static int recv_hello_payload(int fd,msg_header_t header,client_game_t* game)
     strcpy(game->players[header.sender_id].name,name);
     game->players[header.sender_id].name[MAX_NAME_LEN]='\0';
     game->players[header.sender_id].known=true;
+
+    snprintf(game->announcement,sizeof(game->announcement),"Player %s joined!",player_name_or_unknown(game,header.sender_id));
     return 0;
 }
 
@@ -115,6 +125,7 @@ static int recv_selected_map_payload(int fd,client_game_t* game)
     if (!game) return -1;
     if (read_exact(fd,game->selected_map_name,MAX_MAP_NAME_LEN)<0) return -1;
     game->selected_map_name[MAX_MAP_NAME_LEN-1]='\0';
+    game->announcement[0]='\0';
     return 0;
 }
 
@@ -204,6 +215,7 @@ static int recv_death_payload(int fd,client_game_t* game)
 
     game->players[player_id].alive=false;
     if (player_id==game->local_player_id && game->status==GAME_RUNNING) game->waiting_for_next_round=true;
+    snprintf(game->announcement,sizeof(game->announcement),"Player %s died!",player_name_or_unknown(game,player_id));
     return 0;
 }
 
@@ -219,7 +231,8 @@ static int recv_status_payload(int fd,client_game_t* game)
     if (game->status!=GAME_END) {
         game->has_winner=false;
         game->winner_id=SERVER_TARGET_ID;
-    }
+        game->announcement[0]='\0';
+    } else game->announcement[0]='\0';
     if (game->status==GAME_LOBBY) game->waiting_for_next_round=false;
     return 0;
 }
@@ -234,6 +247,7 @@ static int recv_winner_payload(int fd,client_game_t* game)
 
     game->has_winner=true;
     game->winner_id=player_id;
+    game->announcement[0]='\0';
     return 0;
 }
 
@@ -291,6 +305,9 @@ static int recv_leave_header(msg_header_t header,client_game_t* game)
     if (!game || header.sender_id>=MAX_PLAYERS) return -1;
     game->players[header.sender_id].known=false;
     game->players[header.sender_id].alive=false;
+
+
+    snprintf(game->announcement,sizeof(game->announcement),"Player %s left!",player_name_or_unknown(game,header.sender_id));
     return 0;
 }
 

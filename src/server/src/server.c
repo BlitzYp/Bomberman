@@ -380,7 +380,12 @@ static void* client_thread_main(void* arg)
                 break;
             case MSG_SET_READY:
                 if (handle_set_ready(server,slot_id)<0) printf("Ignoring SET_READY from slot %u in invalid state\n",slot_id);
-
+                break;
+            case MSG_SELECT_MAP_PREV:
+                if (lobby_select_prev_map(server,slot_id)<0) printf("Ignoring SELECT_MAP_PREV from slot %u in invalid state\n",slot_id);
+                break;
+            case MSG_SELECT_MAP_NEXT:
+                if (lobby_select_next_map(server,slot_id)<0) printf("Ignoring SELECT_MAP_NEXT from slot %u in invalid state\n",slot_id);
                 break;
             case MSG_LEAVE:
                 connection_active=false;

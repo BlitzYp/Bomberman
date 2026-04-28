@@ -24,6 +24,7 @@ typedef struct {
     uint8_t winner_id;
     uint8_t local_player_id;
     bool waiting_for_next_round;
+    char selected_map_name[MAX_MAP_NAME_LEN];
     char announcement[128];
 } client_game_t;
 #endif

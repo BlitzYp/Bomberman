@@ -19,6 +19,103 @@ static bool check_unique_name(server_t* server, char* name, uint8_t slot_id)
     return true;
 }
 
+static bool is_lobby_owner(server_t* server,uint8_t slot_id)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* p=&server->state.players[i];
+        if (!p->connected) continue;
+        return i==slot_id;
+    }
+    return false;
+}
+
+static void clear_ready_status(game_state_t* state)
+{
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* p=&state->players[i];
+        if (!p->connected) continue;
+        p->ready=false;
+        p->p.ready=false;
+    }
+}
+
+static int reload_map(server_t* server)
+{
+    if (!server) return -1;
+    if (game_state_load_selected_map(&server->state)!=0) return -1;
+    clear_ready_status(&server->state);
+    return 0;
+}
+
+int lobby_select_next_map(server_t *server, uint8_t slot_id)
+{
+    if (!server || slot_id>=MAX_PLAYERS) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    if (server->state.status!=GAME_LOBBY) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    if (!is_lobby_owner(server,slot_id)) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    if (server->state.map_config_count==0) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+
+    server->state.selected_map_index++;
+    if (server->state.selected_map_index>=server->state.map_config_count) server->state.selected_map_index=0;
+
+    if (reload_map(server)!=0) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    if (broadcast_map(server)!=0) return -1;
+    if (broadcast_all_bonuses(server)!=0) return -1;
+    if (broadcast_selected_map(server)!=0) return -1;
+
+    return 0;
+}
+
+int lobby_select_prev_map(server_t *server, uint8_t slot_id)
+{
+
+    if (!server || slot_id>=MAX_PLAYERS) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    if (server->state.status!=GAME_LOBBY) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    if (!is_lobby_owner(server,slot_id)) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    if (server->state.map_config_count==0) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+
+    if (server->state.selected_map_index==0) server->state.selected_map_index=(uint8_t)(server->state.map_config_count-1);
+    else server->state.selected_map_index--;
+
+    if (reload_map(server)!=0) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    if (broadcast_map(server)!=0) return -1;
+    if (broadcast_all_bonuses(server)!=0) return -1;
+    if (broadcast_selected_map(server)!=0) return -1;
+
+    return 0;
+}
+
 int handle_hello(server_t* server, int client_fd, uint8_t slot_id, msg_header_t header)
 {
     msg_hello_t msg;
@@ -46,6 +143,7 @@ int handle_hello(server_t* server, int client_fd, uint8_t slot_id, msg_header_t 
     if (send_welcome(server,client_fd,slot_id)!=0) return -1;
     if (send_map(client_fd,slot_id,&server->state.map)!=0) return -1;
     if (send_all_bonuses(server,client_fd,slot_id)!=0) return -1;
+    if (send_selected_map(client_fd,slot_id,game_state_selected_map_name(&server->state))!=0) return -1;
     if (send_hello_broadcast(server,slot_id,msg.client_id,msg.player_name)!=0) return -1;
 
     for (uint8_t i=0;i<connected_count;i++) {

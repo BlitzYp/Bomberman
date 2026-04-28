@@ -89,6 +89,14 @@ static int recv_hello_payload(int fd, msg_header_t header, client_game_t* game)
     return 0;
 }
 
+static int recv_selected_map_payload(int fd, client_game_t* game)
+{
+    if (read_exact(fd,game->selected_map_name,MAX_MAP_NAME_LEN)<0) return -1;
+    game->selected_map_name[MAX_MAP_NAME_LEN-1]='\0';
+    client_ui_set_announcement(game,"");
+    return 0;
+}
+
 static int recv_map_payload(int fd, client_game_t* game)
 {
     uint16_t rows;
@@ -325,9 +333,11 @@ static int recv_block_destroyed_payload(int fd, client_game_t* game)
     return 0;
 }
 
-int process_server_message(int fd, WINDOW* map_wind, client_game_t* game)
+int process_server_message(int fd, WINDOW** map_wind, client_game_t* game)
 {
     msg_header_t header;
+
+    if (!map_wind || !*map_wind) return -1;
 
     if (get_header(fd, &header)<0) return -1;
 
@@ -341,19 +351,24 @@ int process_server_message(int fd, WINDOW* map_wind, client_game_t* game)
             if (recv_status_payload(fd,game)!=0) return -1;
             client_ui_draw_footer(game);
             return 0;
+        case MSG_SELECTED_MAP:
+            if (recv_selected_map_payload(fd,game)!=0) return -1;
+            client_ui_draw_footer(game);
+            return 0;
         case MSG_LEAVE:
             if (header.sender_id>=MAX_PLAYERS) return -1;
             game->players[header.sender_id].known=false;
             game->players[header.sender_id].alive=false;
-            client_ui_redraw(map_wind,game);
+            client_ui_redraw(*map_wind,game);
             return 0;
         case MSG_MAP:
             if (recv_map_payload(fd,game)<0) return -1;
-            client_ui_redraw(map_wind,game);
+            if (client_ui_sync_map_window(map_wind,game)!=0) return -1;
+            client_ui_redraw(*map_wind,game);
             return 0;
         case MSG_MOVED:
             if (recv_player_move_payload(fd,game)!=0) return -1;
-            client_ui_redraw(map_wind,game);
+            client_ui_redraw(*map_wind,game);
             return 0;
         case MSG_BOMB:
             if (discard_bomb_payload(fd)!=0) return -1;
@@ -366,7 +381,7 @@ int process_server_message(int fd, WINDOW* map_wind, client_game_t* game)
             return 0;
         case MSG_DEATH:
             if (recv_death_payload(fd,game)!=0) return -1;
-            client_ui_redraw(map_wind,game);
+            client_ui_redraw(*map_wind,game);
             return 0;
         case MSG_WINNER:
             if (recv_winner_payload(fd,game)!=0) return -1;
@@ -374,11 +389,11 @@ int process_server_message(int fd, WINDOW* map_wind, client_game_t* game)
             return 0;
         case MSG_BONUS_AVAILABLE:
             if (recv_bonus_available_payload(fd,game)!=0) return -1;
-            client_ui_redraw(map_wind,game);
+            client_ui_redraw(*map_wind,game);
             return 0;
         case MSG_BONUS_RETRIEVED:
             if (recv_bonus_retrieved_payload(fd,game)!=0) return -1;
-            client_ui_redraw(map_wind,game);
+            client_ui_redraw(*map_wind,game);
             return 0;
         case MSG_BLOCK_DESTROYED:
             if (recv_block_destroyed_payload(fd,game)!=0) return -1;

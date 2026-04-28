@@ -7,7 +7,8 @@
 
 #define FOOTER_STATUS_OFFSET 3
 #define FOOTER_DETAIL_OFFSET 4
-#define FOOTER_EVENT_OFFSET 5
+#define FOOTER_CONTROLS_OFFSET 5
+#define FOOTER_EVENT_OFFSET 6
 
 static const char* status_name(game_status_t status)
 {
@@ -97,30 +98,45 @@ static void draw_bonuses(WINDOW* map_wind, const client_game_t* game)
 
 void client_ui_draw_footer(const client_game_t* game)
 {
-    char status_line[160];
+    char status_line[96];
     char detail_line[160];
+    char controls_line[96];
 
-    snprintf(status_line,sizeof(status_line),"Status: %s | Controls: space bomb, r ready, q quit",status_name(game->status));
+    snprintf(status_line,sizeof(status_line),"Status: %s",status_name(game->status));
 
     detail_line[0]='\0';
+    controls_line[0]='\0';
 
     if (game->has_winner) {
         const char* winner_name=game->players[game->winner_id].name;
         if (winner_name[0]=='\0') winner_name="Unknown";
-        snprintf(detail_line,sizeof(detail_line),"Winner: %s | Press r to restart",winner_name);
+        snprintf(detail_line,sizeof(detail_line),"Winner: %s",winner_name);
+        snprintf(controls_line,sizeof(controls_line),"Press r to restart | q quit");
     }
     else if (game->status==GAME_LOBBY) {
-        snprintf(detail_line,sizeof(detail_line),"Press r to ready");
+        if (game->selected_map_name[0]!='\0') {
+            snprintf(detail_line,sizeof(detail_line),"Map: %s",game->selected_map_name);
+        }
+        else {
+            snprintf(detail_line,sizeof(detail_line),"Map: (unknown)");
+        }
+        snprintf(controls_line,sizeof(controls_line),"Lobby: [ ] change map | r ready | q quit");
     }
     else if (game->status==GAME_END) {
-        snprintf(detail_line,sizeof(detail_line),"Game over | Press r to restart");
+        snprintf(detail_line,sizeof(detail_line),"Game over");
+        snprintf(controls_line,sizeof(controls_line),"Press r to restart | q quit");
     }
     else if (game->status==GAME_RUNNING && game->waiting_for_next_round) {
         snprintf(detail_line,sizeof(detail_line),"Waiting for next round");
+        snprintf(controls_line,sizeof(controls_line),"q quit");
+    }
+    else {
+        snprintf(controls_line,sizeof(controls_line),"Running: arrows move | space bomb | q quit");
     }
 
     draw_footer_line((int)game->rows+FOOTER_STATUS_OFFSET,status_line);
     draw_footer_line((int)game->rows+FOOTER_DETAIL_OFFSET,detail_line);
+    draw_footer_line((int)game->rows+FOOTER_CONTROLS_OFFSET,controls_line);
     draw_footer_line((int)game->rows+FOOTER_EVENT_OFFSET,game->announcement);
     refresh();
 }
@@ -147,7 +163,7 @@ int client_ui_init(WINDOW** main_wind, WINDOW** map_wind, const client_game_t* g
     *main_wind=initscr();
     if (!*main_wind) return -1;
 
-    *map_wind=subwin(*main_wind, game->rows+2, game->cols+2, 0, 0);
+    *map_wind=newwin(game->rows+2, game->cols+2, 0, 0);
     if (!*map_wind) {
         endwin();
         return -1;
@@ -157,6 +173,24 @@ int client_ui_init(WINDOW** main_wind, WINDOW** map_wind, const client_game_t* g
     curs_set(0);
     keypad(*main_wind, TRUE);
     nodelay(*main_wind, TRUE);
+
+    return 0;
+}
+
+int client_ui_sync_map_window(WINDOW** map_wind, const client_game_t* game)
+{
+    if (!map_wind || !game) return -1;
+
+    if (*map_wind) {
+        delwin(*map_wind);
+        *map_wind=NULL;
+    }
+
+    clear();
+    refresh();
+
+    *map_wind=newwin(game->rows+2, game->cols+2, 0, 0);
+    if (!*map_wind) return -1;
 
     return 0;
 }

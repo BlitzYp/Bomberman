@@ -7,10 +7,12 @@
 #define MAX_PLAYERS 8
 #define MAX_NAME_LEN 30
 #define MAX_CLIENT_ID_LEN 20
+#define MAX_MAP_NAME_LEN 64
 #define TICKS_PER_SECOND 20
 #define SERVER_TARGET_ID 255
 #define BROADCAST_TARGET_ID 254
 #define MAX_BOMBS 64
+#define MAPS_DIR "src/assets/maps"
 
 typedef enum {
     GAME_LOBBY = 0,
@@ -42,7 +44,10 @@ typedef enum {
     MSG_LEAVE = 5,
     MSG_ERROR = 6,
     MSG_SET_READY = 10,
+    MSG_SELECT_MAP_PREV = 11,
+    MSG_SELECT_MAP_NEXT = 12,
     MSG_SET_STATUS = 20,
+    MSG_SELECTED_MAP = 21,
     MSG_MAP = 7,
     MSG_WINNER = 23,
     MSG_MOVE_ATTEMPT = 30,

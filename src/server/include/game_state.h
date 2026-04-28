@@ -35,6 +35,12 @@ typedef struct {
 } action_queue_t;
 
 typedef struct {
+    char name[64];
+    char path[512];
+} map_config_t;
+
+#define MAX_MAP_CONFIGS 16
+typedef struct {
     game_status_t status;
     bool running;
     player_slot_t players[MAX_PLAYERS];
@@ -45,12 +51,24 @@ typedef struct {
     map_t map;
     map_t initial_map;
     bonus_type_t* bonuses;
+    map_config_t map_configs[MAX_MAP_CONFIGS];
+    uint8_t map_config_count;
+    uint8_t selected_map_index;
 } game_state_t;
+
 
 int game_state_init(game_state_t* state);
 void game_state_destroy(game_state_t* state);
 int game_state_reset_round(game_state_t* state);
+int game_state_load_selected_map(game_state_t* state);
 
 int enqueue_action(game_state_t* state,action_t action);
 int dequeue_action(game_state_t* state,action_t* action);
+
+static inline const char* game_state_selected_map_name(const game_state_t* state)
+{
+    if (!state || state->map_config_count==0 || state->selected_map_index>=state->map_config_count) return "";
+    return state->map_configs[state->selected_map_index].name;
+}
+
 #endif

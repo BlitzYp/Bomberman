@@ -91,6 +91,28 @@ int send_set_ready(int fd)
     return send_header(fd,&msg.header);
 }
 
+int send_select_map_prev(int fd)
+{
+    msg_select_map_t msg;
+
+    msg.header.msg_type=MSG_SELECT_MAP_PREV;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=SERVER_TARGET_ID;
+
+    return send_header(fd,&msg.header);
+}
+
+int send_select_map_next(int fd)
+{
+    msg_select_map_t msg;
+
+    msg.header.msg_type=MSG_SELECT_MAP_NEXT;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=SERVER_TARGET_ID;
+
+    return send_header(fd,&msg.header);
+}
+
 int send_leave(int fd)
 {
     msg_header_t header;

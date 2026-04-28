@@ -464,6 +464,50 @@ int send_status_broadcast(server_t* server,game_status_t status)
     return 0;
 }
 
+int send_selected_map(int client_fd,uint8_t target_id,const char* map_name)
+{
+    msg_selected_map_t msg;
+
+    if (client_fd<0 || !map_name) return -1;
+
+    memset(&msg,0,sizeof(msg));
+    msg.header.msg_type=MSG_SELECTED_MAP;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=target_id;
+    snprintf(msg.map_name,sizeof(msg.map_name),"%s",map_name);
+
+    if (send_header(client_fd,&msg.header)<0) return -1;
+    if (write_exact(client_fd,msg.map_name,MAX_MAP_NAME_LEN)<0) return -1;
+
+    return 0;
+}
+
+int broadcast_selected_map(server_t* server)
+{
+    int client_fd[MAX_PLAYERS];
+    uint8_t client_ids[MAX_PLAYERS];
+    uint8_t client_count=0;
+    char map_name[MAX_MAP_NAME_LEN];
+
+    if (!server) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    snprintf(map_name,sizeof(map_name),"%s",game_state_selected_map_name(&server->state));
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count]=slot->socket_fd;
+        client_ids[client_count++]=slot->id;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_selected_map(client_fd[i],client_ids[i],map_name)<0) return -1;
+    }
+
+    return 0;
+}
+
 
 int send_bonus_available(server_t* server,uint16_t cell_index,bonus_type_t bonus)
 {

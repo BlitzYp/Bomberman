@@ -2,7 +2,7 @@
 
 Multiplayer Bomberman course project in C with a strict authoritative client-server architecture.
 
-The server owns the game state, validates all actions, runs the fixed-tick simulation, and broadcasts results. The client sends input, receives authoritative updates, and renders the game. Current rendering is a simple `ncurses` debug client.
+The server owns the game state, validates all actions, runs the fixed-tick simulation, and broadcasts results. The client sends input, receives authoritative updates, and renders the game. Current rendering is a simple `ncurses` debug client, with a separate `raylib` client scaffold started in `src/client_v2/`.
 
 ## Current Status
 
@@ -34,10 +34,13 @@ Implemented so far:
 - selected map sync for lobby clients
 - client bonus rendering
 - client refactored into networking / protocol / UI / main modules
+- `MSG_SYNC_REQUEST` debug resync path using existing authoritative messages
+- separate `client_v2` raylib window scaffold
 
 Current limitations:
 
 - client is still a debug client, not the final graphical one
+- `client_v2` currently opens only a basic raylib window and is not connected to gameplay yet
 - client currently discards detailed bomb/explosion event payloads and relies on authoritative `MSG_MAP` updates for tile rendering
 - bonus rendering is event-driven, not part of `MSG_MAP`
 - gameplay around late join is still minimal and not fully specified beyond state sync
@@ -72,6 +75,12 @@ src/
       client_net.c
       client_protocol.c
       client_ui.c
+  client_v2/
+    include/
+      client_v2_app.h
+    src/
+      main.c
+      client_v2_app.c
   assets/
     maps/
 ```
@@ -86,11 +95,18 @@ Build outputs:
 
 - `build/bin/server`
 - `build/bin/client`
+- `build/bin/client_v2` via `make client-v2`
 
 Clean build artifacts:
 
 ```bash
 make clean
+```
+
+Optional raylib client build:
+
+```bash
+make client-v2
 ```
 
 ## Run
@@ -121,6 +137,12 @@ or:
 make run-client
 ```
 
+Optional raylib client scaffold:
+
+```bash
+./build/bin/client_v2
+```
+
 Default connection target is `127.0.0.1:1727`.
 
 ## Client Controls
@@ -129,6 +151,7 @@ Default connection target is `127.0.0.1:1727`.
 - `space`: place bomb
 - `r`: ready / restart next round
 - `[` / `]`: previous / next map in lobby
+- `s`: request a full resync from the server
 - `q`: leave
 
 ## Current Gameplay Flow
@@ -162,6 +185,7 @@ Medium priority:
 Later:
 
 - replace the debug `ncurses` client with the planned graphical client
+- connect `client_v2` to the real network/game state pipeline
 - add final art/audio pipeline decisions
 - add gameplay polish and visual effects
 

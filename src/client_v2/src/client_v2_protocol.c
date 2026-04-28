@@ -15,6 +15,23 @@ static const char* player_name_or_unknown(const client_game_t* game,uint8_t play
     return game->players[player_id].name;
 }
 
+static const char* bonus_type_name(bonus_type_t bonus)
+{
+    switch (bonus) {
+        case BONUS_SPEED:
+            return "Speed";
+        case BONUS_RADIUS:
+            return "Radius";
+        case BONUS_TIMER:
+            return "Timer";
+        case BONUS_BOMB_COUNT:
+            return "Bomb count + 1";
+        case BONUS_NONE:
+        default:
+            return "Unknown";
+    }
+}
+
 int client_v2_recv_welcome(int fd,client_game_t* game)
 {
     msg_header_t header;
@@ -283,7 +300,10 @@ static int recv_bonus_retrieved_payload(int fd,client_game_t* game)
     cell_count=(uint32_t)game->rows*game->cols;
     if (cell_index>=cell_count) return -1;
 
+    bonus_type_t bonus_type=game->bonuses[cell_index];
     game->bonuses[cell_index]=BONUS_NONE;
+
+    snprintf(game->announcement,sizeof(game->announcement),"%s collected %s bonus",game->players[player_id].name,bonus_type_name(bonus_type));
     return 0;
 }
 

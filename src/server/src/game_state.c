@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <dirent.h>
 
 static int map_clone(map_t* dst, const map_t* src)
 {
@@ -77,6 +79,93 @@ static void reset_player_for_round(player_slot_t* slot, const map_t* map)
     }
 }
 
+static void clear_loaded_map_state(game_state_t* state)
+{
+    if (!state) return;
+
+    free(state->bonuses);
+    state->bonuses=NULL;
+
+    map_destroy(&state->map);
+    map_destroy(&state->initial_map);
+
+    memset(&state->map,0,sizeof(state->map));
+    memset(&state->initial_map,0,sizeof(state->initial_map));
+}
+
+int game_state_load_selected_map(game_state_t *state)
+{
+    if (!state) return -1;
+    if (state->map_config_count==0 || state->selected_map_index>=state->map_config_count) return -1;
+
+    clear_loaded_map_state(state);
+
+    const char* path=state->map_configs[state->selected_map_index].path;
+    if (map_load_from_file(path,&state->map)!=0) return -1;
+    if (map_clone(&state->initial_map,&state->map)!=0) {
+        map_destroy(&state->map);
+        memset(&state->map,0,sizeof(state->map));
+        return -1;
+    }
+
+    if (init_bonus_storage(state)!=0){
+        map_destroy(&state->initial_map);
+        map_destroy(&state->map);
+        memset(&state->initial_map,0,sizeof(state->map));
+        memset(&state->map,0,sizeof(state->map));
+        return -1;
+    }
+    return 0;
+}
+
+static int comp_config(const void* a,const void* b)
+{
+    const map_config_t* a_config=(const map_config_t*)a;
+    const map_config_t* b_config=(const map_config_t*)b;
+    return strcmp(a_config->name,b_config->name);
+}
+
+static int has_txt_extension(const char* name)
+{
+    if (!name) return 0;
+    size_t len=strlen(name);
+    if (len<4) return 0;
+    return strcmp(name+len-4,".txt")==0;
+}
+
+static int init_map_selection(game_state_t* state)
+{
+    if (!state) return -1;
+    state->map_config_count=0;
+    state->selected_map_index=0;
+
+    DIR* dir=opendir(MAPS_DIR);
+    if (!dir) return -1;
+
+    struct dirent* entry;
+    while ((entry=readdir(dir))!=NULL) {
+        if (entry->d_name[0]=='.') continue;
+        if (!has_txt_extension(entry->d_name)) continue;
+        if (state->map_config_count>=MAX_MAP_CONFIGS) break;
+
+        map_config_t* cfg=&state->map_configs[state->map_config_count++];
+        memset(cfg,0,sizeof(*cfg));
+
+        snprintf(cfg->path,sizeof(cfg->path),"%s/%s",MAPS_DIR,entry->d_name);
+        size_t len=strlen(entry->d_name);
+        if (len>=4) len-=4;
+        if (len>=sizeof(cfg->name)) len=sizeof(cfg->name)-1;
+
+        memcpy(cfg->name,entry->d_name,len);
+        cfg->name[len]='\0';
+    }
+    closedir(dir);
+    if (state->map_config_count==0) return -1;
+    qsort(state->map_configs,state->map_config_count,sizeof(state->map_configs[0]),comp_config);
+    return 0;
+}
+
+
 int game_state_init(game_state_t* state)
 {
     memset((void*)state,0,sizeof(*state));
@@ -89,21 +178,16 @@ int game_state_init(game_state_t* state)
         state->players[i].connected=false;
     }
 
-    if (map_load_from_file("src/assets/maps/sample_map.txt",&state->map)!=0) {
+    if (init_map_selection(state)!=0) {
         pthread_mutex_destroy(&state->mutex);
         return -1;
     }
-    if (map_clone(&state->initial_map,&state->map)!=0) {
-        map_destroy(&state->map);
+
+    if (game_state_load_selected_map(state)!=0) {
         pthread_mutex_destroy(&state->mutex);
         return -1;
     }
-    if (init_bonus_storage(state)!=0) {
-        map_destroy(&state->initial_map);
-        map_destroy(&state->map);
-        pthread_mutex_destroy(&state->mutex);
-        return -1;
-    }
+
     return 0;
 }
 

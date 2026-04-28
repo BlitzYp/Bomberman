@@ -12,6 +12,7 @@ Implemented so far:
 - TCP client/server connection flow
 - `HELLO`, `WELCOME`, `LEAVE`, `DISCONNECT`
 - lobby state with ready-up flow
+- lobby map/config selection
 - status transitions: `GAME_LOBBY -> GAME_RUNNING -> GAME_END`
 - fixed-tick server loop at `20` ticks per second
 - authoritative movement handling
@@ -30,6 +31,7 @@ Implemented so far:
 - bonus sync to newly connected clients and on round restart
 - `MSG_BLOCK_DESTROYED`
 - late-join name sync for already connected clients
+- selected map sync for lobby clients
 - client bonus rendering
 - client refactored into networking / protocol / UI / main modules
 
@@ -41,6 +43,7 @@ Current limitations:
 - gameplay around late join is still minimal and not fully specified beyond state sync
 - no final lobby polish or end-screen polish
 - map-file config values beyond the layout/bonus content are not fully used yet
+- map selection currently uses repo-level protocol extensions because the base spec does not fully define the wire flow for it
 
 ## Project Structure
 
@@ -125,29 +128,31 @@ Default connection target is `127.0.0.1:1727`.
 - arrow keys: move
 - `space`: place bomb
 - `r`: ready / restart next round
+- `[` / `]`: previous / next map in lobby
 - `q`: leave
 
 ## Current Gameplay Flow
 
 1. Clients connect and send `HELLO`.
-2. Server replies with `WELCOME`, the current map, and current bonuses.
-3. Players press `r` in lobby.
-4. When at least two connected players are ready, the server resets the round and switches to `GAME_RUNNING`.
-5. Server processes movement, bombs, explosions, bonus collection, and deaths on the tick loop.
-6. When one or zero alive players remain, the server switches to `GAME_END`.
-7. Players press `r` again to start the next round.
+2. Server replies with `WELCOME`, the current map, current bonuses, and the selected map name.
+3. In lobby, the first connected player can cycle available maps from `src/assets/maps/` with `[` and `]`.
+4. Players press `r` in lobby.
+5. When at least two connected players are ready, the server resets the round and switches to `GAME_RUNNING`.
+6. Server processes movement, bombs, explosions, bonus collection, and deaths on the tick loop.
+7. When one or zero alive players remain, the server switches to `GAME_END`.
+8. Players press `r` again to start the next round.
 
 ## TODO
 
 High priority:
 
-- implement lobby map/config selection so the first player can choose from the server's available map options before the round starts
 - test and clean up remaining multi-bomb / explosion edge cases
 - decide and document the intended late-join behavior during `GAME_RUNNING`
 - add stronger validation for player names and lobby edge cases
 
 Medium priority:
 
+- improve lobby polish around map selection and host-only actions
 - decide whether to keep the current full-map-sync-heavy client behavior or move more rendering onto explicit protocol events
 - use more of the map-file config values from the specification
 - refactor large gameplay modules further as mechanics grow
@@ -169,3 +174,4 @@ Later:
   - `2 = GAME_END`
 - Big-endian encoding is used for multibyte integer values on the wire.
 - `BONUS_RETRIEVED` follows the text spec payload: `player_id + cell_index`. The client infers the removed bonus type from its current bonus layer.
+- The server scans `src/assets/maps/` for `.txt` map files and sorts them alphabetically for lobby selection.

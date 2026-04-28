@@ -85,7 +85,7 @@ int main(int argc, char** argv)
             }
 
             if (socket_poll.revents & POLLIN) {
-                int message_result=process_server_message(fd, map_wind, &game);
+                int message_result=process_server_message(fd, &map_wind, &game);
                 if (message_result>0) {
                     client_ui_shutdown(mainwind,map_wind);
                     close(fd);
@@ -130,6 +130,20 @@ int main(int argc, char** argv)
                 dir=-1;
                 if (send_set_ready(fd) < 0) {
                     return client_fail(mainwind,map_wind,fd,&game,"send ready failed");
+                }
+                break;
+            case '[':
+                if (game.status!=GAME_LOBBY) continue;
+                dir=-1;
+                if (send_select_map_prev(fd) < 0) {
+                    return client_fail(mainwind,map_wind,fd,&game,"send map prev failed");
+                }
+                break;
+            case ']':
+                if (game.status!=GAME_LOBBY) continue;
+                dir=-1;
+                if (send_select_map_next(fd) < 0) {
+                    return client_fail(mainwind,map_wind,fd,&game,"send map next failed");
                 }
                 break;
             case 'q':

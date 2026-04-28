@@ -74,6 +74,14 @@ int recv_welcome(int fd, client_game_t* game)
         printf("player[%u]: id=%u ready=%u name=%s\n", i, id, ready, name);
         strcpy(game->players[id].name,name);
         game->players[id].name[MAX_NAME_LEN]='\0';
+        game->players[id].known=true;
+        game->players[id].ready=(ready!=0);
+    }
+
+    game->connected_count=player_count;
+    game->ready_count=0;
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (game->players[i].ready) game->ready_count++;
     }
 
     return 0;
@@ -92,6 +100,8 @@ static int recv_hello_payload(int fd, msg_header_t header, client_game_t* game)
     name[MAX_NAME_LEN]='\0';
     strcpy(game->players[header.sender_id].name,name);
     game->players[header.sender_id].name[MAX_NAME_LEN]='\0';
+    game->players[header.sender_id].known=true;
+    game->players[header.sender_id].ready=false;
 
     char ann[128];
     snprintf(ann,sizeof(ann),"Player %s joined!",player_name_or_unknown(game,header.sender_id));
@@ -284,6 +294,20 @@ static int recv_status_payload(int fd, client_game_t* game)
     return 0;
 }
 
+static int recv_ready_state_payload(int fd, client_game_t* game)
+{
+    uint8_t ready_count;
+    uint8_t connected_count;
+
+    if (recv_u8(fd,&ready_count)<0) return -1;
+    if (recv_u8(fd,&connected_count)<0) return -1;
+    if (ready_count>connected_count || connected_count>MAX_PLAYERS) return -1;
+
+    game->ready_count=ready_count;
+    game->connected_count=connected_count;
+    return 0;
+}
+
 static int recv_bonus_available_payload(int fd, client_game_t* game)
 {
     uint8_t bonus_type;
@@ -367,10 +391,15 @@ int process_server_message(int fd, WINDOW** map_wind, client_game_t* game)
             if (recv_selected_map_payload(fd,game)!=0) return -1;
             client_ui_draw_footer(game);
             return 0;
+        case MSG_READY_STATE:
+            if (recv_ready_state_payload(fd,game)!=0) return -1;
+            client_ui_draw_footer(game);
+            return 0;
         case MSG_LEAVE:
             if (header.sender_id>=MAX_PLAYERS) return -1;
             game->players[header.sender_id].known=false;
             game->players[header.sender_id].alive=false;
+            game->players[header.sender_id].ready=false;
             client_ui_redraw(*map_wind,game);
             return 0;
         case MSG_MAP:

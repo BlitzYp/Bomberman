@@ -48,6 +48,7 @@ typedef enum {
     MSG_SELECT_MAP_NEXT = 12,
     MSG_SET_STATUS = 20,
     MSG_SELECTED_MAP = 21,
+    MSG_READY_STATE = 22,
     MSG_MAP = 7,
     MSG_WINNER = 23,
     MSG_MOVE_ATTEMPT = 30,

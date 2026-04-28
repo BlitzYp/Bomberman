@@ -77,6 +77,7 @@ int lobby_select_next_map(server_t *server, uint8_t slot_id)
     if (broadcast_map(server)!=0) return -1;
     if (broadcast_all_bonuses(server)!=0) return -1;
     if (broadcast_selected_map(server)!=0) return -1;
+    if (broadcast_ready_state(server)!=0) return -1;
 
     return 0;
 }
@@ -112,6 +113,7 @@ int lobby_select_prev_map(server_t *server, uint8_t slot_id)
     if (broadcast_map(server)!=0) return -1;
     if (broadcast_all_bonuses(server)!=0) return -1;
     if (broadcast_selected_map(server)!=0) return -1;
+    if (broadcast_ready_state(server)!=0) return -1;
 
     return 0;
 }
@@ -145,6 +147,7 @@ int handle_hello(server_t* server, int client_fd, uint8_t slot_id, msg_header_t 
     if (send_all_bonuses(server,client_fd,slot_id)!=0) return -1;
     if (send_selected_map(client_fd,slot_id,game_state_selected_map_name(&server->state))!=0) return -1;
     if (send_hello_broadcast(server,slot_id,msg.client_id,msg.player_name)!=0) return -1;
+    if (broadcast_ready_state(server)!=0) return -1;
 
     for (uint8_t i=0;i<connected_count;i++) {
         uint8_t player_id=connected_players[i];
@@ -203,10 +206,13 @@ int handle_set_ready(server_t* server,uint8_t slot_id)
     }
     pthread_mutex_unlock(&server->state.mutex);
 
+    if (broadcast_ready_state(server)!=0) return -1;
+
     if (should_start) {
         if (send_status_broadcast(server,GAME_RUNNING)<0) return -1;
         if (broadcast_map(server)<0) return -1;
         if (broadcast_all_bonuses(server)<0) return -1;
+        if (broadcast_ready_state(server)<0) return -1;
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
             if (send_move(server,i)!=0) continue;
         }
@@ -214,6 +220,7 @@ int handle_set_ready(server_t* server,uint8_t slot_id)
         if (send_status_broadcast(server,GAME_LOBBY)<0) return -1;
         if (broadcast_map(server)<0) return -1;
         if (broadcast_all_bonuses(server)<0) return -1;
+        if (broadcast_ready_state(server)<0) return -1;
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
             if (send_move(server,i)!=0) continue;
         }

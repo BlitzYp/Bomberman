@@ -2,7 +2,7 @@
 
 Multiplayer Bomberman course project in C with a strict authoritative client-server architecture.
 
-The server owns the game state, validates all actions, runs the fixed-tick simulation, and broadcasts results. The client sends input, receives authoritative updates, and renders the game. Current rendering is a simple `ncurses` debug client.
+The server owns the game state, validates all actions, runs the fixed-tick simulation, and broadcasts results. The client sends input, receives authoritative updates, and renders the game. Current rendering includes the original `ncurses` debug client and a second `raylib` client implementation in `src/client_v2/`.
 
 ## Current Status
 
@@ -12,6 +12,7 @@ Implemented so far:
 - TCP client/server connection flow
 - `HELLO`, `WELCOME`, `LEAVE`, `DISCONNECT`
 - lobby state with ready-up flow
+- live lobby ready-count sync for all clients
 - lobby map/config selection
 - status transitions: `GAME_LOBBY -> GAME_RUNNING -> GAME_END`
 - fixed-tick server loop at `20` ticks per second
@@ -32,8 +33,11 @@ Implemented so far:
 - `MSG_BLOCK_DESTROYED`
 - late-join name sync for already connected clients
 - selected map sync for lobby clients
+- `MSG_READY_STATE` sync for lobby readiness display
 - client bonus rendering
 - client refactored into networking / protocol / UI / main modules
+- `MSG_SYNC_REQUEST` debug resync path using existing authoritative messages
+- separate `client_v2` raylib client with live map / player rendering and gameplay input
 
 Current limitations:
 
@@ -72,6 +76,12 @@ src/
       client_net.c
       client_protocol.c
       client_ui.c
+  client_v2/
+    include/
+      client_v2_app.h
+    src/
+      main.c
+      client_v2_app.c
   assets/
     maps/
 ```
@@ -86,11 +96,18 @@ Build outputs:
 
 - `build/bin/server`
 - `build/bin/client`
+- `build/bin/client_v2` via `make client-v2`
 
 Clean build artifacts:
 
 ```bash
 make clean
+```
+
+Optional raylib client build:
+
+```bash
+make client-v2
 ```
 
 ## Run
@@ -121,6 +138,18 @@ or:
 make run-client
 ```
 
+Optional raylib client scaffold:
+
+```bash
+./build/bin/client_v2
+```
+
+or:
+
+```bash
+make run-client-v2
+```
+
 Default connection target is `127.0.0.1:1727`.
 
 ## Client Controls
@@ -129,6 +158,7 @@ Default connection target is `127.0.0.1:1727`.
 - `space`: place bomb
 - `r`: ready / restart next round
 - `[` / `]`: previous / next map in lobby
+- `s`: request a full resync from the server
 - `q`: leave
 
 ## Current Gameplay Flow
@@ -136,34 +166,16 @@ Default connection target is `127.0.0.1:1727`.
 1. Clients connect and send `HELLO`.
 2. Server replies with `WELCOME`, the current map, current bonuses, and the selected map name.
 3. In lobby, the first connected player can cycle available maps from `src/assets/maps/` with `[` and `]`.
-4. Players press `r` in lobby.
-5. When at least two connected players are ready, the server resets the round and switches to `GAME_RUNNING`.
-6. Server processes movement, bombs, explosions, bonus collection, and deaths on the tick loop.
-7. When one or zero alive players remain, the server switches to `GAME_END`.
-8. Players press `r` again to start the next round.
+4. All clients see the current lobby readiness as `ready/connected`.
+5. Players press `r` in lobby.
+6. When at least two connected players are ready, the server resets the round and switches to `GAME_RUNNING`.
+7. Server processes movement, bombs, explosions, bonus collection, and deaths on the tick loop.
+8. When one or zero alive players remain, the server switches to `GAME_END`.
+9. Players press `r` again to start the next round.
 
 ## TODO
 
-High priority:
-
-- test and clean up remaining multi-bomb / explosion edge cases
-- decide and document the intended late-join behavior during `GAME_RUNNING`
-- add stronger validation for player names and lobby edge cases
-
-Medium priority:
-
-- improve lobby polish around map selection and host-only actions
-- decide whether to keep the current full-map-sync-heavy client behavior or move more rendering onto explicit protocol events
-- use more of the map-file config values from the specification
-- refactor large gameplay modules further as mechanics grow
-- improve round reset and end-state UX
-- add better disconnect/error handling paths
-
-Later:
-
-- replace the debug `ncurses` client with the planned graphical client
-- add final art/audio pipeline decisions
-- add gameplay polish and visual effects
+- deploy the server on a real IP address and port instead of the current local default `127.0.0.1:1727`
 
 ## Notes
 
@@ -175,3 +187,4 @@ Later:
 - Big-endian encoding is used for multibyte integer values on the wire.
 - `BONUS_RETRIEVED` follows the text spec payload: `player_id + cell_index`. The client infers the removed bonus type from its current bonus layer.
 - The server scans `src/assets/maps/` for `.txt` map files and sorts them alphabetically for lobby selection.
+- `MSG_READY_STATE` is a repo-level message used to keep both client versions synchronized on lobby readiness counts.

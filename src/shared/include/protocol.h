@@ -78,6 +78,12 @@ typedef struct {
 
 typedef struct {
     msg_header_t header;
+    uint8_t ready_count;
+    uint8_t connected_count;
+} msg_ready_state_t;
+
+typedef struct {
+    msg_header_t header;
     uint8_t bonus_type;
     uint16_t cell_index;
 } msg_bonus_available_t;

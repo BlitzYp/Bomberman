@@ -340,6 +340,11 @@ static void cleanup(server_t* server,int client_fd,uint8_t slot_id,bool joined)
 
     close(client_fd);
     free_player_slot(server,slot_id);
+    if (joined) {
+        if (broadcast_ready_state(server)<0) {
+            printf("Error broadcasting ready state after leave for slot %u\n",slot_id);
+        }
+    }
 }
 
 // PROCESS MAIN CLIENT THREAD HERE

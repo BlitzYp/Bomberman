@@ -8,6 +8,7 @@
 typedef struct {
     bool known;
     bool alive;
+    bool ready;
     uint16_t row;
     uint16_t col;
     char name[MAX_NAME_LEN+1];
@@ -23,6 +24,8 @@ typedef struct {
     bool has_winner;
     uint8_t winner_id;
     uint8_t local_player_id;
+    uint8_t ready_count;
+    uint8_t connected_count;
     bool waiting_for_next_round;
     char selected_map_name[MAX_MAP_NAME_LEN];
     char announcement[128];

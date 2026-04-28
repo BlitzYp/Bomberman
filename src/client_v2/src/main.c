@@ -35,7 +35,7 @@ int main(int argc,char** argv)
     if (argc>1) snprintf(player_name,sizeof(player_name),"%s",argv[1]);
     else snprintf(player_name,sizeof(player_name),"Player-%ld",(long)getpid());
 
-    fd=connect_to_server("127.0.0.1",1727);
+    fd=connect_to_server("35.187.169.225",1727);
     if (fd<0) {
         fprintf(stderr,"connect failed\n");
         return 1;

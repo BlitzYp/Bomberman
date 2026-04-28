@@ -113,6 +113,17 @@ int send_select_map_next(int fd)
     return send_header(fd,&msg.header);
 }
 
+int send_sync_request(int fd)
+{
+    msg_sync_request_t msg;
+
+    msg.header.msg_type=MSG_SYNC_REQUEST;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=SERVER_TARGET_ID;
+
+    return send_header(fd,&msg.header);
+}
+
 int send_leave(int fd)
 {
     msg_header_t header;

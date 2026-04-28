@@ -64,6 +64,10 @@ typedef struct {
 
 typedef struct {
     msg_header_t header;
+} msg_sync_request_t;
+
+typedef struct {
+    msg_header_t header;
     uint8_t status;
 } msg_set_status_t;
 

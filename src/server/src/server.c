@@ -390,6 +390,12 @@ static void* client_thread_main(void* arg)
             case MSG_SELECT_MAP_NEXT:
                 if (lobby_select_next_map(server,slot_id)<0) printf("Ignoring SELECT_MAP_NEXT from slot %u in invalid state\n",slot_id);
                 break;
+            case MSG_SYNC_REQUEST:
+                if (send_full_sync(server,client_fd,slot_id)<0) {
+                    send_disconnect(client_fd,slot_id);
+                    connection_active=false;
+                }
+                break;
             case MSG_LEAVE:
                 connection_active=false;
                 break;

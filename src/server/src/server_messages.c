@@ -7,6 +7,68 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int send_status(int client_fd,uint8_t target_id,game_status_t status)
+{
+    msg_set_status_t state;
+
+    if (client_fd<0) return -1;
+
+    state.header.msg_type=MSG_SET_STATUS;
+    state.header.sender_id=SERVER_TARGET_ID;
+    state.header.target_id=target_id;
+    state.status=(uint8_t)status;
+
+    if (send_header(client_fd,&state.header)<0) return -1;
+    if (send_u8(client_fd,state.status)<0) return -1;
+
+    return 0;
+}
+
+static int send_move_to_client(server_t* server,int client_fd,uint8_t target_id,uint8_t slot_id)
+{
+    msg_moved_t moved;
+
+    if (!server || client_fd<0 || slot_id>=MAX_PLAYERS) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    player_slot_t* slot=&server->state.players[slot_id];
+    if (!slot->alive || !slot->connected || server->state.map.cols==0) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    uint16_t cell_index=make_cell_index(slot->p.row,slot->p.col,server->state.map.cols);
+    pthread_mutex_unlock(&server->state.mutex);
+
+    moved.header.msg_type=MSG_MOVED;
+    moved.header.sender_id=slot_id;
+    moved.header.target_id=target_id;
+    moved.player_id=slot_id;
+    moved.cell_index=cell_index;
+
+    if (send_header(client_fd,&moved.header)<0) return -1;
+    if (send_u8(client_fd,moved.player_id)<0) return -1;
+    if (send_u16_be(client_fd,moved.cell_index)<0) return -1;
+
+    return 0;
+}
+
+static int send_winner_to_client(int client_fd,uint8_t target_id,uint8_t player_id)
+{
+    msg_winner_t winner;
+
+    if (client_fd<0 || player_id>=MAX_PLAYERS) return -1;
+
+    winner.header.msg_type=MSG_WINNER;
+    winner.header.sender_id=player_id;
+    winner.header.target_id=target_id;
+    winner.player_id=player_id;
+
+    if (send_header(client_fd,&winner.header)<0) return -1;
+    if (send_u8(client_fd,winner.player_id)<0) return -1;
+
+    return 0;
+}
+
 int send_welcome(server_t* server, int client_fd, uint8_t slot_id)
 {
     typedef struct {
@@ -503,6 +565,71 @@ int broadcast_selected_map(server_t* server)
 
     for (uint8_t i=0;i<client_count;i++) {
         if (send_selected_map(client_fd[i],client_ids[i],map_name)<0) return -1;
+    }
+
+    return 0;
+}
+
+int send_full_sync(server_t* server,int client_fd,uint8_t target_id)
+{
+    bool synced_players[MAX_PLAYERS]={0};
+    uint8_t winner_id=SERVER_TARGET_ID;
+    bool has_winner=false;
+    char map_name[MAX_MAP_NAME_LEN];
+    map_t map_snapshot;
+
+    if (!server || client_fd<0 || target_id>=MAX_PLAYERS) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    game_status_t status=server->state.status;
+    if (!server->state.map.tiles) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    uint16_t rows=server->state.map.rows;
+    uint16_t cols=server->state.map.cols;
+    snprintf(map_name,sizeof(map_name),"%s",game_state_selected_map_name(&server->state));
+    tile_t* tiles=malloc((size_t)rows*cols*sizeof(*tiles));
+    if (!tiles) {
+        pthread_mutex_unlock(&server->state.mutex);
+        return -1;
+    }
+    memcpy(tiles,server->state.map.tiles,(size_t)rows*cols*sizeof(*tiles));
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* player=&server->state.players[i];
+        if (!player->connected || !player->alive) continue;
+        synced_players[i]=true;
+        winner_id=i;
+        has_winner=true;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    if (send_status(client_fd,target_id,status)<0) {
+        free(tiles);
+        return -1;
+    }
+    if (send_selected_map(client_fd,target_id,map_name)<0) {
+        free(tiles);
+        return -1;
+    }
+    memset(&map_snapshot,0,sizeof(map_snapshot));
+    map_snapshot.rows=rows;
+    map_snapshot.cols=cols;
+    map_snapshot.tiles=tiles;
+    if (send_map(client_fd,target_id,&map_snapshot)<0) {
+        free(tiles);
+        return -1;
+    }
+    free(tiles);
+    if (send_all_bonuses(server,client_fd,target_id)<0) return -1;
+
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!synced_players[i]) continue;
+        if (send_move_to_client(server,client_fd,target_id,i)<0) return -1;
+    }
+
+    if (status==GAME_END && has_winner) {
+        if (send_winner_to_client(client_fd,target_id,winner_id)<0) return -1;
     }
 
     return 0;

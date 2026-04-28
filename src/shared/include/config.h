@@ -59,7 +59,9 @@ typedef enum {
     MSG_DEATH = 44,
     MSG_BONUS_AVAILABLE = 45,
     MSG_BONUS_RETRIEVED = 46,
-    MSG_BLOCK_DESTROYED = 47
+    MSG_BLOCK_DESTROYED = 47,
+    MSG_SYNC_BOARD = 100,
+    MSG_SYNC_REQUEST = 101
 } msg_type_t;
 
 typedef struct {

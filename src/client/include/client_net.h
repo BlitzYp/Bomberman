@@ -10,6 +10,7 @@ int send_player_bomb(int fd);
 int send_set_ready(int fd);
 int send_select_map_prev(int fd);
 int send_select_map_next(int fd);
+int send_sync_request(int fd);
 int send_leave(int fd);
 
 #endif

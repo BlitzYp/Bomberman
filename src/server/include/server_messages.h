@@ -33,6 +33,7 @@ int send_winner_broadcast(server_t* server, uint8_t player_id);
 int send_status_broadcast(server_t* server,game_status_t status);
 int send_selected_map(int client_fd,uint8_t target_id,const char* map_name);
 int broadcast_selected_map(server_t* server);
+int send_full_sync(server_t* server,int client_fd,uint8_t target_id);
 
 int send_bonus_available(server_t* server,uint16_t cell_index,bonus_type_t bonus);
 int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index);

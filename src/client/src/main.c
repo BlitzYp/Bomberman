@@ -146,6 +146,12 @@ int main(int argc, char** argv)
                     return client_fail(mainwind,map_wind,fd,&game,"send map next failed");
                 }
                 break;
+            case 's':
+                dir=-1;
+                if (send_sync_request(fd) < 0) {
+                    return client_fail(mainwind,map_wind,fd,&game,"send sync request failed");
+                }
+                break;
             case 'q':
                 send_leave(fd);
                 client_ui_shutdown(mainwind,map_wind);

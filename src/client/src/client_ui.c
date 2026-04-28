@@ -120,18 +120,18 @@ void client_ui_draw_footer(const client_game_t* game)
         else {
             snprintf(detail_line,sizeof(detail_line),"Map: (unknown)");
         }
-        snprintf(controls_line,sizeof(controls_line),"Lobby: [ ] change map | r ready | q quit");
+        snprintf(controls_line,sizeof(controls_line),"Lobby: [ ] change map | r ready | s resync | q quit");
     }
     else if (game->status==GAME_END) {
         snprintf(detail_line,sizeof(detail_line),"Game over");
-        snprintf(controls_line,sizeof(controls_line),"Press r to restart | q quit");
+        snprintf(controls_line,sizeof(controls_line),"Press r to restart | s resync | q quit");
     }
     else if (game->status==GAME_RUNNING && game->waiting_for_next_round) {
         snprintf(detail_line,sizeof(detail_line),"Waiting for next round");
-        snprintf(controls_line,sizeof(controls_line),"q quit");
+        snprintf(controls_line,sizeof(controls_line),"s resync | q quit");
     }
     else {
-        snprintf(controls_line,sizeof(controls_line),"Running: arrows move | space bomb | q quit");
+        snprintf(controls_line,sizeof(controls_line),"Running: arrows move | space bomb | s resync | q quit");
     }
 
     draw_footer_line((int)game->rows+FOOTER_STATUS_OFFSET,status_line);

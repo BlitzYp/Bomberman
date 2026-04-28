@@ -175,26 +175,7 @@ Default connection target is `127.0.0.1:1727`.
 
 ## TODO
 
-High priority:
-
-- test and clean up remaining multi-bomb / explosion edge cases
-- decide and document the intended late-join behavior during `GAME_RUNNING`
-- add stronger validation for player names and lobby edge cases
-
-Medium priority:
-
-- improve lobby polish around map selection and host-only actions
-- decide whether to keep the current full-map-sync-heavy client behavior or move more rendering onto explicit protocol events
-- use more of the map-file config values from the specification
-- refactor large gameplay modules further as mechanics grow
-- improve round reset and end-state UX
-- add better disconnect/error handling paths
-
-Later:
-
-- replace the debug `ncurses` client with the planned graphical client
-- add final art/audio pipeline decisions
-- add gameplay polish and visual effects
+- deploy the server on a real IP address and port instead of the current local default `127.0.0.1:1727`
 
 ## Notes
 

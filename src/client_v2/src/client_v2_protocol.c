@@ -350,7 +350,6 @@ static int recv_leave_header(msg_header_t header,client_game_t* game)
     game->players[header.sender_id].alive=false;
     game->players[header.sender_id].ready=false;
 
-
     snprintf(game->announcement,sizeof(game->announcement),"Player %s left!",player_name_or_unknown(game,header.sender_id));
     return 0;
 }

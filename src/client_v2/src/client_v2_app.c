@@ -146,9 +146,12 @@ void client_v2_app_draw(const client_v2_app_t* app)
                 DrawRectangleLinesEx(dst,2.0f,GOLD);
             }
             // Bonuses
-            if (app->game.bonuses && app->game.bonuses[cell]!=BONUS_NONE && app->game.tiles[cell]==TILE_EMPTY)
-                DrawCircle((int)(dst.x+dst.width*0.7f),(int)(dst.y+dst.height*0.7f),(float)(app->tile_draw_size*0.12f),LIME);
-
+            if (app->game.bonuses && app->game.bonuses[cell]!=BONUS_NONE && app->game.tiles[cell]==TILE_EMPTY) {
+                if (app->game.bonuses[cell]==BONUS_BOMB_COUNT) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, RED);
+                if (app->game.bonuses[cell]==BONUS_RADIUS) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, YELLOW);
+                if (app->game.bonuses[cell]==BONUS_SPEED) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), RED, YELLOW);
+                if (app->game.bonuses[cell]==BONUS_TIMER) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, GREEN);
+            }
         }
     }
 

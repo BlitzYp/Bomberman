@@ -141,6 +141,7 @@ Default connection target is `127.0.0.1:1727`.
 
 High priority:
 
+- implement lobby map/config selection so the first player can choose from the server's available map options before the round starts
 - test and clean up remaining multi-bomb / explosion edge cases
 - decide and document the intended late-join behavior during `GAME_RUNNING`
 - add stronger validation for player names and lobby edge cases

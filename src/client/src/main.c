@@ -39,7 +39,7 @@ int main(int argc, char** argv)
     client_game_t game;
     memset(&game,0,sizeof(game));
 
-    int fd=connect_to_server("127.0.0.1", 1727);
+    int fd=connect_to_server("35.187.169.225", 1727);
     if (fd<0) {
         return client_fail(NULL,NULL,-1,&game,"connect failed");
     }

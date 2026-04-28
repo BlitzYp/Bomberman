@@ -497,9 +497,9 @@ int send_bonus_available(server_t* server,uint16_t cell_index,bonus_type_t bonus
     return 0;
 }
 
-int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index,bonus_type_t type)
+int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index)
 {
-    if (!server || type==BONUS_NONE || player_id>=MAX_PLAYERS) return -1;
+    if (!server || player_id>=MAX_PLAYERS) return -1;
 
     msg_bonus_retrieved_t msg;
 
@@ -517,14 +517,12 @@ int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index,
     msg.header.sender_id=player_id;
     msg.header.target_id=BROADCAST_TARGET_ID;
 
-    msg.bonus_type=(uint8_t)type;
     msg.cell_index=cell_index;
     msg.player_id=player_id;
 
     for (uint8_t i=0;i<client_count;i++) {
         if (send_header(client_fd[i],&msg.header)<0) return -1;
         if (send_u8(client_fd[i],msg.player_id)<0) return -1;
-        if (send_u8(client_fd[i],msg.bonus_type)<0) return -1;
         if (send_u16_be(client_fd[i],msg.cell_index)<0) return -1;
     }
 
@@ -636,11 +634,11 @@ void send_bonus_available_broadcast(server_t *server, bool* bonus_cells_changed,
     }
 }
 
-void send_bonus_retrieved_broadcast(server_t* server,bool* collected_players,bonus_type_t* types,uint16_t* collected_cells)
+void send_bonus_retrieved_broadcast(server_t* server,bool* collected_players,uint16_t* collected_cells)
 {
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         if (!collected_players[i]) continue;
-        if (send_bonus_retrieved(server,i,collected_cells[i],types[i])!=0) printf("Error sending bonus retrieved for player %u\n",i);
+        if (send_bonus_retrieved(server,i,collected_cells[i])!=0) printf("Error sending bonus retrieved for player %u\n",i);
     }
 }
 

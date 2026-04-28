@@ -72,7 +72,6 @@ typedef struct {
 typedef struct {
     msg_header_t header;
     uint8_t player_id;
-    uint8_t bonus_type;
     uint16_t cell_index;
 } msg_bonus_retrieved_t;
 

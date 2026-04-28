@@ -144,7 +144,6 @@ static void* tick_thread_loop(void* arg)
         bool dead_players[MAX_PLAYERS]={0};
 
         bool bonus_collected_players[MAX_PLAYERS]={0};
-        bonus_type_t collected_bonus_types[MAX_PLAYERS]={0};
         uint16_t collected_bonus_cells[MAX_PLAYERS];
         for (uint8_t i=0;i<MAX_PLAYERS;i++) collected_bonus_cells[i]=UINT16_MAX;
 
@@ -181,7 +180,6 @@ static void* tick_thread_loop(void* arg)
                 handle_action_move(server,slot,action,&collected_bonus_type,&collected_bonus_cell);
                 if (collected_bonus_type!=BONUS_NONE) {
                     bonus_collected_players[slot->id]=true;
-                    collected_bonus_types[slot->id]=collected_bonus_type;
                     collected_bonus_cells[slot->id]=collected_bonus_cell;
                 }
                 moved_players[slot->id]=true;
@@ -269,7 +267,7 @@ static void* tick_thread_loop(void* arg)
         send_death_broadcast(server,dead_players);
 
         // - Update bonuses for players
-        send_bonus_retrieved_broadcast(server,bonus_collected_players,collected_bonus_types,collected_bonus_cells);
+        send_bonus_retrieved_broadcast(server,bonus_collected_players,collected_bonus_cells);
 
         // - Notify destroyed soft blocks
         send_block_destroyed_broadcast(server,destroyed_block_cells);

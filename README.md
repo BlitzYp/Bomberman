@@ -16,6 +16,7 @@ Implemented so far:
 - fixed-tick server loop at `20` ticks per second
 - authoritative movement handling
 - bomb placement, timers, explosion start/end
+- chain explosions
 - full-map broadcast for authoritative tile sync
 - death detection and `MSG_DEATH`
 - winner detection and `MSG_WINNER`
@@ -24,7 +25,10 @@ Implemented so far:
 - initial map bonuses loaded from map files
 - bonus spawning from destroyed soft blocks
 - bonus retrieval with server-side stat updates
+- supported bonuses: `S` speed, `R` radius, `T` timer, `N` bomb-count
+- shared bomb pool for multiple simultaneous bombs per player
 - bonus sync to newly connected clients and on round restart
+- `MSG_BLOCK_DESTROYED`
 - late-join name sync for already connected clients
 - client bonus rendering
 - client refactored into networking / protocol / UI / main modules
@@ -35,8 +39,8 @@ Current limitations:
 - client currently discards detailed bomb/explosion event payloads and relies on authoritative `MSG_MAP` updates for tile rendering
 - bonus rendering is event-driven, not part of `MSG_MAP`
 - gameplay around late join is still minimal and not fully specified beyond state sync
-- no chain explosion / advanced bomb interaction polish yet
 - no final lobby polish or end-screen polish
+- map-file config values beyond the layout/bonus content are not fully used yet
 
 ## Project Structure
 
@@ -137,13 +141,14 @@ Default connection target is `127.0.0.1:1727`.
 
 High priority:
 
-- chain reactions when a bomb explosions triggers another bomb
-- clean up remaining bomb / explosion edge cases and behavior
+- test and clean up remaining multi-bomb / explosion edge cases
 - decide and document the intended late-join behavior during `GAME_RUNNING`
 - add stronger validation for player names and lobby edge cases
 
 Medium priority:
 
+- decide whether to keep the current full-map-sync-heavy client behavior or move more rendering onto explicit protocol events
+- use more of the map-file config values from the specification
 - refactor large gameplay modules further as mechanics grow
 - improve round reset and end-state UX
 - add better disconnect/error handling paths
@@ -162,3 +167,4 @@ Later:
   - `1 = GAME_RUNNING`
   - `2 = GAME_END`
 - Big-endian encoding is used for multibyte integer values on the wire.
+- `BONUS_RETRIEVED` follows the text spec payload: `player_id + cell_index`. The client infers the removed bonus type from its current bonus layer.

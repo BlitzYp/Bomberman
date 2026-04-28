@@ -284,29 +284,29 @@ static int recv_bonus_available_payload(int fd, client_game_t* game)
 
 static int recv_bonus_retrieved_payload(int fd, client_game_t* game)
 {
-    uint8_t player_id,bonus_type;
+    uint8_t player_id;
     uint16_t cell_index;
     uint32_t cell_count;
     const char* player_name;
+    bonus_type_t bonus_type;
     char message[128];
 
     if (recv_u8(fd,&player_id)<0) return -1;
-    if (recv_u8(fd,&bonus_type)<0) return -1;
     if (recv_u16_be(fd,&cell_index)<0) return -1;
 
     if (player_id>=MAX_PLAYERS) return -1;
-    if (bonus_type>BONUS_BOMB_COUNT) return -1;
     if (!game->bonuses) return -1;
 
     cell_count=(uint32_t)game->rows*game->cols;
     if (cell_index>=cell_count) return -1;
 
+    bonus_type=game->bonuses[cell_index];
     game->bonuses[cell_index]=BONUS_NONE;
 
     player_name=game->players[player_id].name;
     if (player_name[0]=='\0') player_name="Unknown";
 
-    snprintf(message,sizeof(message),"%s collected %s bonus",player_name,bonus_type_name((bonus_type_t)bonus_type));
+    snprintf(message,sizeof(message),"%s collected %s bonus",player_name,bonus_type_name(bonus_type));
     client_ui_set_announcement(game,message);
     return 0;
 }

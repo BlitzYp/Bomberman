@@ -33,12 +33,12 @@ int send_winner_broadcast(server_t* server, uint8_t player_id);
 int send_status_broadcast(server_t* server,game_status_t status);
 
 int send_bonus_available(server_t* server,uint16_t cell_index,bonus_type_t bonus);
-int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index,bonus_type_t type);
+int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index);
 int send_block_destroyed(server_t* server,uint16_t cell_index);
 int send_all_bonuses(server_t* server,int client_fd,uint8_t target_id);
 int broadcast_all_bonuses(server_t* server);
 
 void send_bonus_available_broadcast(server_t *server, bool* bonus_cells_changed,bonus_type_t* types);
-void send_bonus_retrieved_broadcast(server_t* server,bool* collected_players,bonus_type_t* types,uint16_t* collected_cells);
+void send_bonus_retrieved_broadcast(server_t* server,bool* collected_players,uint16_t* collected_cells);
 void send_block_destroyed_broadcast(server_t* server,bool* destroyed_cells);
 #endif

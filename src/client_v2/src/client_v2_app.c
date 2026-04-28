@@ -193,7 +193,10 @@ void client_v2_app_draw(const client_v2_app_t* app)
 
     footer_y=app->board_offset_y+app->game.rows*app->tile_draw_size+24;
     DrawText(status_line,40,footer_y,24,DARKGRAY);
-    if (detail_line[0]!='\0') DrawText(detail_line,40,footer_y+FOOTER_DETAIL_OFFSET,20,GRAY);
+    if (detail_line[0]!='\0') {
+        if (app->game.has_winner) DrawText(detail_line,40,footer_y+FOOTER_DETAIL_OFFSET,20,DARKGREEN);
+        else DrawText(detail_line,40,footer_y+FOOTER_DETAIL_OFFSET,20,GRAY);
+    }
     if (controls_line[0]!='\0') DrawText(controls_line,40,footer_y+FOOTER_CONTROLS_OFFSET,20,GRAY);
     DrawText(app->game.announcement,40,footer_y+FOOTER_EVENT_OFFSET,20,GRAY);
 }

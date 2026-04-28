@@ -2,6 +2,12 @@
 #include "../include/client_ui.h"
 
 #include <ncurses.h>
+#include <stdio.h>
+#include <string.h>
+
+#define FOOTER_STATUS_OFFSET 3
+#define FOOTER_DETAIL_OFFSET 4
+#define FOOTER_EVENT_OFFSET 5
 
 static const char* status_name(game_status_t status)
 {
@@ -44,10 +50,19 @@ static char bonus_to_char(bonus_type_t bonus)
             return 'R';
         case BONUS_TIMER:
             return 'T';
+        case BONUS_BOMB_COUNT:
+            return 'N';
         case BONUS_NONE:
         default:
             return ' ';
     }
+}
+
+static void draw_footer_line(int row, const char* text)
+{
+    move(row,0);
+    clrtoeol();
+    if (text && text[0]!='\0') printw("%s",text);
 }
 
 static void draw_map(WINDOW* map_wind, const client_game_t* game)
@@ -82,29 +97,31 @@ static void draw_bonuses(WINDOW* map_wind, const client_game_t* game)
 
 void client_ui_draw_footer(const client_game_t* game)
 {
-    move((int)game->rows+3,0);
-    clrtoeol();
+    char status_line[160];
+    char detail_line[160];
+
+    snprintf(status_line,sizeof(status_line),"Status: %s | Controls: space bomb, r ready, q quit",status_name(game->status));
+
+    detail_line[0]='\0';
 
     if (game->has_winner) {
         const char* winner_name=game->players[game->winner_id].name;
         if (winner_name[0]=='\0') winner_name="Unknown";
-        printw("Game over! Winner is %s! Press r to restart",winner_name);
+        snprintf(detail_line,sizeof(detail_line),"Winner: %s | Press r to restart",winner_name);
     }
     else if (game->status==GAME_LOBBY) {
-        printw("Status: %s | Press r to ready",status_name(game->status));
+        snprintf(detail_line,sizeof(detail_line),"Press r to ready");
     }
     else if (game->status==GAME_END) {
-        printw("Game over! Press r to restart");
+        snprintf(detail_line,sizeof(detail_line),"Game over | Press r to restart");
     }
     else if (game->status==GAME_RUNNING && game->waiting_for_next_round) {
-        printw("Status: GAME IN PROGRESS | Waiting for next round");
-    }
-    else {
-        printw("Status: %s",status_name(game->status));
+        snprintf(detail_line,sizeof(detail_line),"Waiting for next round");
     }
 
-    move((int)game->rows+4,0);
-
+    draw_footer_line((int)game->rows+FOOTER_STATUS_OFFSET,status_line);
+    draw_footer_line((int)game->rows+FOOTER_DETAIL_OFFSET,detail_line);
+    draw_footer_line((int)game->rows+FOOTER_EVENT_OFFSET,game->announcement);
     refresh();
 }
 
@@ -150,4 +167,16 @@ void client_ui_shutdown(WINDOW* main_wind, WINDOW* map_wind)
     delwin(main_wind);
     endwin();
     refresh();
+}
+
+void client_ui_set_announcement(client_game_t* game, const char* message)
+{
+    if (!game) return;
+
+    if (!message) {
+        game->announcement[0]='\0';
+        return;
+    }
+
+    snprintf(game->announcement,sizeof(game->announcement),"%s",message);
 }

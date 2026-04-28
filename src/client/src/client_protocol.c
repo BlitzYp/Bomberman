@@ -20,6 +20,8 @@ static const char* bonus_type_name(bonus_type_t bonus)
             return "Radius";
         case BONUS_TIMER:
             return "Timer";
+        case BONUS_BOMB_COUNT:
+            return "Bomb count + 1";
         case BONUS_NONE:
         default:
             return "Unknown";
@@ -230,6 +232,7 @@ static int recv_winner_payload(int fd,client_game_t* game)
 
     game->has_winner=true;
     game->winner_id=player_id;
+    client_ui_set_announcement(game,"");
     return 0;
 }
 
@@ -245,11 +248,17 @@ static int recv_status_payload(int fd, client_game_t* game)
         game->has_winner=false;
         game->winner_id=SERVER_TARGET_ID;
     }
+    else {
+        client_ui_set_announcement(game,"");
+    }
     if (game->status==GAME_LOBBY) {
         game->waiting_for_next_round=false;
     }
     if (game->status==GAME_RUNNING && game->bonuses) {
         memset(game->bonuses,BONUS_NONE,(size_t)game->rows*game->cols*sizeof(*game->bonuses));
+    }
+    if (game->status!=GAME_END) {
+        client_ui_set_announcement(game,"");
     }
     return 0;
 }
@@ -263,7 +272,7 @@ static int recv_bonus_available_payload(int fd, client_game_t* game)
     if (recv_u8(fd,&bonus_type)<0) return -1;
     if (recv_u16_be(fd,&cell_index)<0) return -1;
 
-    if (bonus_type>BONUS_TIMER) return -1;
+    if (bonus_type>BONUS_BOMB_COUNT) return -1;
     if (!game->bonuses) return -1;
 
     cell_count=(uint32_t)game->rows*game->cols;
@@ -279,13 +288,14 @@ static int recv_bonus_retrieved_payload(int fd, client_game_t* game)
     uint16_t cell_index;
     uint32_t cell_count;
     const char* player_name;
+    char message[128];
 
     if (recv_u8(fd,&player_id)<0) return -1;
     if (recv_u8(fd,&bonus_type)<0) return -1;
     if (recv_u16_be(fd,&cell_index)<0) return -1;
 
     if (player_id>=MAX_PLAYERS) return -1;
-    if (bonus_type>BONUS_TIMER) return -1;
+    if (bonus_type>BONUS_BOMB_COUNT) return -1;
     if (!game->bonuses) return -1;
 
     cell_count=(uint32_t)game->rows*game->cols;
@@ -296,15 +306,22 @@ static int recv_bonus_retrieved_payload(int fd, client_game_t* game)
     player_name=game->players[player_id].name;
     if (player_name[0]=='\0') player_name="Unknown";
 
-    mvprintw(
-        game->rows+4,
-        0,
-        "%s collected %s bonus at cell %u",
-        player_name,
-        bonus_type_name((bonus_type_t)bonus_type),
-        (unsigned)cell_index
-    );
-    refresh();
+    snprintf(message,sizeof(message),"%s collected %s bonus",player_name,bonus_type_name((bonus_type_t)bonus_type));
+    client_ui_set_announcement(game,message);
+    return 0;
+}
+
+static int recv_block_destroyed_payload(int fd, client_game_t* game)
+{
+    uint16_t cell_index;
+    uint32_t cell_count;
+
+    if (recv_u16_be(fd,&cell_index)<0) return -1;
+    if (!game->tiles) return -1;
+
+    cell_count=(uint32_t)game->rows*game->cols;
+    if (cell_index>=cell_count) return -1;
+
     return 0;
 }
 
@@ -362,6 +379,9 @@ int process_server_message(int fd, WINDOW* map_wind, client_game_t* game)
         case MSG_BONUS_RETRIEVED:
             if (recv_bonus_retrieved_payload(fd,game)!=0) return -1;
             client_ui_redraw(map_wind,game);
+            return 0;
+        case MSG_BLOCK_DESTROYED:
+            if (recv_block_destroyed_payload(fd,game)!=0) return -1;
             return 0;
         default:
             return -1;

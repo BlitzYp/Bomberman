@@ -45,6 +45,10 @@ int apply_bonus_player(player_slot_t *slot, bonus_type_t type)
             // Remove one tick from bomb timer
             if (slot->p.bomb_timer_ticks>TICKS_PER_SECOND) slot->p.bomb_timer_ticks-=TICKS_PER_SECOND;
             return 0;
+        case BONUS_BOMB_COUNT:
+            slot->p.bomb_count++;
+            slot->p.bomb_capacity++;
+            return 0;
         case BONUS_NONE: {}
         default: return -1;
     }

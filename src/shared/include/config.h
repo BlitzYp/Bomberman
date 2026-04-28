@@ -10,6 +10,7 @@
 #define TICKS_PER_SECOND 20
 #define SERVER_TARGET_ID 255
 #define BROADCAST_TARGET_ID 254
+#define MAX_BOMBS 64
 
 typedef enum {
     GAME_LOBBY = 0,
@@ -28,7 +29,8 @@ typedef enum {
     BONUS_NONE = 0,
     BONUS_SPEED = 1,
     BONUS_RADIUS = 2,
-    BONUS_TIMER = 3
+    BONUS_TIMER = 3,
+    BONUS_BOMB_COUNT = 4
 } bonus_type_t;
 
 typedef enum {
@@ -63,6 +65,7 @@ typedef struct {
     bool alive;
     bool ready;
     uint8_t bomb_count;
+    uint8_t bomb_capacity;
     uint8_t bomb_radius;
     uint16_t bomb_timer_ticks;
     uint16_t speed;

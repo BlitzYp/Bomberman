@@ -10,11 +10,12 @@ void collect_bomb_events(server_t* server, bool* exploding_bombs, bool* end_expl
 void apply_explosion_start(
     server_t* server,
     bomb_t* bomb,
+    bool* destroyed_block_cells,
     bool* bonus_cells_changed,
     bonus_type_t* available_cell_types,
     bool* pending_starts,
     bool* started_this_tick
 );
 void apply_explosion_end(server_t* server, bomb_t* bomb);
-
+bomb_t* find_free_bomb(game_state_t* state);
 #endif

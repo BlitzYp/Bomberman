@@ -46,6 +46,12 @@ static int parse_tile_token(const char* token, tile_t* tile, bonus_type_t* bonus
         return 0;
     }
 
+    if (strcmp(token,"N")==0) {
+        *tile=TILE_EMPTY;
+        *bonus=BONUS_BOMB_COUNT;
+        return 0;
+    }
+
     if (strlen(token)==1 && isdigit((unsigned char)token[0])) {
         uint8_t id=(uint8_t)(token[0]-'0');
         if (id>=MAX_PLAYERS) return -1;

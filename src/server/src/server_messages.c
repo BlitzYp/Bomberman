@@ -239,21 +239,18 @@ void send_move_broadcast(server_t* server, bool* moved_players)
     }
 }
 
-int send_bomb(server_t* server, uint8_t slot_id)
+int send_bomb(server_t* server, bomb_t* bomb_state)
 {
-    if (!server || slot_id>=MAX_PLAYERS) return -1;
+    if (!server || !bomb_state || bomb_state->owner_id>=MAX_PLAYERS) return -1;
 
     msg_bomb_t bomb;
-    bomb.player_id=slot_id;
+    bomb.player_id=bomb_state->owner_id;
 
     pthread_mutex_lock(&server->state.mutex);
-    player_slot_t* slot=&server->state.players[slot_id];
-    if (!slot->alive || !slot->connected || server->state.map.cols==0) {
+    if (server->state.map.cols==0) {
         pthread_mutex_unlock(&server->state.mutex);
         return -1;
     }
-
-    bomb_t* bomb_state=&server->state.bombs[slot_id];
     uint16_t cell_index=make_cell_index(bomb_state->row,bomb_state->col,server->state.map.cols);
 
     uint8_t client_count=0;
@@ -267,7 +264,7 @@ int send_bomb(server_t* server, uint8_t slot_id)
 
     bomb.cell_index=cell_index;
     bomb.header.msg_type=MSG_BOMB;
-    bomb.header.sender_id=slot_id;
+    bomb.header.sender_id=bomb_state->owner_id;
     bomb.header.target_id=BROADCAST_TARGET_ID;
 
     for (uint8_t i=0;i<client_count;i++) {
@@ -279,32 +276,32 @@ int send_bomb(server_t* server, uint8_t slot_id)
     return 0;
 }
 
-void send_bomb_broadcast(server_t* server, bool* bomb_placed_players)
+void send_bomb_broadcast(server_t* server, bool* placed_bombs)
 {
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (!bomb_placed_players[i]) continue;
-        if (send_bomb(server,i)!=0) {
-            printf("Error sending bomb data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+    for (uint8_t i=0;i<MAX_BOMBS;i++) {
+        if (!placed_bombs[i]) continue;
+        if (send_bomb(server,&server->state.bombs[i])!=0) {
+            printf("Error sending bomb data for bomb slot %u\n",i);
         }
     }
 }
 
-void send_exploding_broadcast(server_t* server, bool* exploding_bombs)
+void send_exploding_broadcast(server_t* server, bool* started_bombs)
 {
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (!exploding_bombs[i]) continue;
+    for (uint8_t i=0;i<MAX_BOMBS;i++) {
+        if (!started_bombs[i]) continue;
         if (send_explode_start(server,&server->state.bombs[i])!=0) {
-            printf("Error sending explode start data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+            printf("Error sending explode start data for bomb slot %u\n",i);
         }
     }
 }
 
-void send_end_explode_broadcast(server_t* server, bool* end_exploding_bombs)
+void send_end_explode_broadcast(server_t* server, bool* ended_bombs)
 {
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (!end_exploding_bombs[i]) continue;
+    for (uint8_t i=0;i<MAX_BOMBS;i++) {
+        if (!ended_bombs[i]) continue;
         if (send_explode_end(server,&server->state.bombs[i])!=0) {
-            printf("Error sending explode end data to the client %s with id %d",server->state.players[i].name,server->state.players[i].id);
+            printf("Error sending explode end data for bomb slot %u\n",i);
         }
     }
 }
@@ -534,6 +531,35 @@ int send_bonus_retrieved(server_t* server,uint8_t player_id,uint16_t cell_index,
     return 0;
 }
 
+int send_block_destroyed(server_t* server,uint16_t cell_index)
+{
+    if (!server) return -1;
+
+    msg_block_destroyed_t msg;
+
+    pthread_mutex_lock(&server->state.mutex);
+    uint8_t client_count=0;
+    int client_fd[MAX_PLAYERS];
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count++]=slot->socket_fd;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    msg.header.msg_type=MSG_BLOCK_DESTROYED;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=BROADCAST_TARGET_ID;
+    msg.cell_index=cell_index;
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_header(client_fd[i],&msg.header)<0) return -1;
+        if (send_u16_be(client_fd[i],msg.cell_index)<0) return -1;
+    }
+
+    return 0;
+}
+
 int send_all_bonuses(server_t* server,int client_fd,uint8_t target_id)
 {
     msg_bonus_available_t msg;
@@ -615,5 +641,23 @@ void send_bonus_retrieved_broadcast(server_t* server,bool* collected_players,bon
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         if (!collected_players[i]) continue;
         if (send_bonus_retrieved(server,i,collected_cells[i],types[i])!=0) printf("Error sending bonus retrieved for player %u\n",i);
+    }
+}
+
+void send_block_destroyed_broadcast(server_t* server,bool* destroyed_cells)
+{
+    uint32_t cell_count;
+
+    if (!server || !destroyed_cells) return;
+
+    pthread_mutex_lock(&server->state.mutex);
+    cell_count=(uint32_t)server->state.map.rows*server->state.map.cols;
+    pthread_mutex_unlock(&server->state.mutex);
+
+    for (uint32_t i=0;i<cell_count;i++) {
+        if (!destroyed_cells[i]) continue;
+        if (send_block_destroyed(server,(uint16_t)i)!=0) {
+            printf("Error sending destroyed block for cell %u\n",(unsigned)i);
+        }
     }
 }

@@ -75,4 +75,9 @@ typedef struct {
     uint8_t bonus_type;
     uint16_t cell_index;
 } msg_bonus_retrieved_t;
+
+typedef struct {
+    msg_header_t header;
+    uint16_t cell_index;
+} msg_block_destroyed_t;
 #endif

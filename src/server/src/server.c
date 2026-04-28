@@ -136,11 +136,11 @@ static void* tick_thread_loop(void* arg)
     for (;;) {
         usleep(sleep_time);
         bool moved_players[MAX_PLAYERS]={0};
-        bool bomb_placed_players[MAX_PLAYERS]={0};
-        bool start_bombs[MAX_PLAYERS]={0};
-        bool pending_starts[MAX_PLAYERS]={0};
-        bool started_this_tick[MAX_PLAYERS]={0};
-        bool end_exploding_bombs[MAX_PLAYERS]={0};
+        bool placed_bombs[MAX_BOMBS]={0};
+        bool start_bombs[MAX_BOMBS]={0};
+        bool pending_starts[MAX_BOMBS]={0};
+        bool started_this_tick[MAX_BOMBS]={0};
+        bool end_exploding_bombs[MAX_BOMBS]={0};
         bool dead_players[MAX_PLAYERS]={0};
 
         bool bonus_collected_players[MAX_PLAYERS]={0};
@@ -164,6 +164,8 @@ static void* tick_thread_loop(void* arg)
         uint32_t cell_count=(uint32_t)server->state.map.rows*server->state.map.cols;
         bonus_type_t available_cell_types[cell_count];
         bool bonus_cells_changed[cell_count];
+        bool destroyed_block_cells[cell_count];
+        memset(destroyed_block_cells,0,sizeof(destroyed_block_cells));
         memset(bonus_cells_changed,0,sizeof(bonus_cells_changed));
         memset(available_cell_types,0,sizeof(available_cell_types));
         //-- Process queued actions
@@ -185,9 +187,12 @@ static void* tick_thread_loop(void* arg)
                 moved_players[slot->id]=true;
             }
             else if (action.type==ACTION_BOMB) {
-                bomb_t* bomb=&server->state.bombs[action.player_id];
+                bomb_t* bomb=find_free_bomb(&server->state);
+                if (!bomb) continue;
                 if (handle_action_bomb(server,bomb,action)) {
-                    bomb_placed_players[bomb->owner_id]=true;
+                    uint8_t bomb_id=(uint8_t)(bomb-server->state.bombs);
+                    placed_bombs[bomb_id]=true;
+
                     map_change=true;
                 }
             }
@@ -198,7 +203,7 @@ static void* tick_thread_loop(void* arg)
 
         // -- resolve explosions
         collect_bomb_events(server,start_bombs,end_exploding_bombs);
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        for (uint8_t i=0;i<MAX_BOMBS;i++) {
             if (start_bombs[i]) {
                 pending_starts[i]=true;
                 started_this_tick[i]=true;
@@ -213,11 +218,11 @@ static void* tick_thread_loop(void* arg)
         bool found_pending;
         do {
             found_pending=false;
-            for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            for (uint8_t i=0;i<MAX_BOMBS;i++) {
                 if (!pending_starts[i]) continue;
 
                 pending_starts[i]=false;
-                apply_explosion_start(server,&server->state.bombs[i],bonus_cells_changed,available_cell_types,pending_starts,started_this_tick);
+                apply_explosion_start(server,&server->state.bombs[i],destroyed_block_cells,bonus_cells_changed,available_cell_types,pending_starts,started_this_tick);
                 map_change=true;
                 found_pending=true;
             }
@@ -256,7 +261,7 @@ static void* tick_thread_loop(void* arg)
 
         // All of the map changes are recorded when we broadcast the new map, we can use these functions later for sound effects maybe
         // For now I think we should discard them in the client
-        send_bomb_broadcast(server,bomb_placed_players);
+        send_bomb_broadcast(server,placed_bombs);
         send_exploding_broadcast(server,started_this_tick);
         send_end_explode_broadcast(server,end_exploding_bombs);
 
@@ -265,6 +270,9 @@ static void* tick_thread_loop(void* arg)
 
         // - Update bonuses for players
         send_bonus_retrieved_broadcast(server,bonus_collected_players,collected_bonus_types,collected_bonus_cells);
+
+        // - Notify destroyed soft blocks
+        send_block_destroyed_broadcast(server,destroyed_block_cells);
 
         // - Update avaialable bonuses
         send_bonus_available_broadcast(server,bonus_cells_changed,available_cell_types);
@@ -291,6 +299,7 @@ void init_slot(player_slot_t* slot,int client_fd,uint8_t id,map_t* map,game_stat
 
     slot->p.bomb_count=1;
     slot->p.bomb_radius=1;
+    slot->p.bomb_capacity=1;
     slot->p.bomb_timer_ticks=3*TICKS_PER_SECOND;
     slot->p.speed=3;
 

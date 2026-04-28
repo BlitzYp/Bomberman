@@ -61,6 +61,7 @@ static void reset_player_for_round(player_slot_t* slot, const map_t* map)
     slot->alive=true;
     slot->p.alive=true;
     slot->p.bomb_count=1;
+    slot->p.bomb_capacity=1;
     slot->p.bomb_radius=1;
     slot->p.bomb_timer_ticks=3*TICKS_PER_SECOND;
     slot->p.speed=3;
@@ -130,7 +131,6 @@ int game_state_reset_round(game_state_t* state)
     memcpy(state->map.spawn_cells,state->initial_map.spawn_cells,sizeof(state->map.spawn_cells));
 
     memset(state->bombs,0,sizeof(state->bombs));
-    state->bomb_count=0;
     // Game state bonuses
     memcpy(state->bonuses,state->initial_map.bonuses,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->bonuses));
 

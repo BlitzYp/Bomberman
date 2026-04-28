@@ -38,6 +38,7 @@ CLIENT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CLIENT_SRCS))
 
 CLIENT_V2_SRCS := \
 	src/client_v2/src/client_v2_app.c \
+	src/client_v2/src/client_v2_protocol.c \
 	src/client_v2/src/main.c \
 	src/client/src/client_net.c \
 	src/shared/src/net_utils.c

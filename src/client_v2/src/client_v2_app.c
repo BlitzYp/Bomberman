@@ -188,8 +188,8 @@ void client_v2_app_draw(const client_v2_app_t* app)
         snprintf(controls_line,sizeof(controls_line),"Press R to return to lobby | ESC quit");
     }
     else if (app->game.status==GAME_LOBBY) {
-        if (app->game.selected_map_name[0]!='\0') snprintf(detail_line,sizeof(detail_line),"Map: %s | %u rows x %u cols | players 2-8",app->game.selected_map_name,app->game.rows,app->game.cols);
-        else snprintf(detail_line,sizeof(detail_line),"Map: (unknown)");
+        if (app->game.selected_map_name[0]!='\0') snprintf(detail_line,sizeof(detail_line),"Map: %s | %u rows x %u cols | Ready: %u/%u",app->game.selected_map_name,app->game.rows,app->game.cols,app->game.ready_count,app->game.connected_count);
+        else snprintf(detail_line,sizeof(detail_line),"Map: (unknown) | Ready: %u/%u",app->game.ready_count,app->game.connected_count);
         snprintf(controls_line,sizeof(controls_line),"Lobby: [ ] change map | R ready | ESC quit");
     }
     else if (app->game.status==GAME_END) {

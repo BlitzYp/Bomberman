@@ -544,6 +544,53 @@ int send_selected_map(int client_fd,uint8_t target_id,const char* map_name)
     return 0;
 }
 
+int send_ready_state(int client_fd,uint8_t target_id,uint8_t ready_count,uint8_t connected_count)
+{
+    msg_ready_state_t msg;
+
+    if (client_fd<0) return -1;
+
+    msg.header.msg_type=MSG_READY_STATE;
+    msg.header.sender_id=SERVER_TARGET_ID;
+    msg.header.target_id=target_id;
+    msg.ready_count=ready_count;
+    msg.connected_count=connected_count;
+
+    if (send_header(client_fd,&msg.header)<0) return -1;
+    if (send_u8(client_fd,msg.ready_count)<0) return -1;
+    if (send_u8(client_fd,msg.connected_count)<0) return -1;
+
+    return 0;
+}
+
+int broadcast_ready_state(server_t* server)
+{
+    int client_fd[MAX_PLAYERS];
+    uint8_t client_ids[MAX_PLAYERS];
+    uint8_t client_count=0;
+    uint8_t ready_count=0;
+    uint8_t connected_count=0;
+
+    if (!server) return -1;
+
+    pthread_mutex_lock(&server->state.mutex);
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        player_slot_t* slot=&server->state.players[i];
+        if (!slot->connected) continue;
+        client_fd[client_count]=slot->socket_fd;
+        client_ids[client_count++]=slot->id;
+        connected_count++;
+        if (slot->ready) ready_count++;
+    }
+    pthread_mutex_unlock(&server->state.mutex);
+
+    for (uint8_t i=0;i<client_count;i++) {
+        if (send_ready_state(client_fd[i],client_ids[i],ready_count,connected_count)<0) return -1;
+    }
+
+    return 0;
+}
+
 int broadcast_selected_map(server_t* server)
 {
     int client_fd[MAX_PLAYERS];
@@ -575,6 +622,8 @@ int send_full_sync(server_t* server,int client_fd,uint8_t target_id)
     bool synced_players[MAX_PLAYERS]={0};
     uint8_t winner_id=SERVER_TARGET_ID;
     bool has_winner=false;
+    uint8_t ready_count=0;
+    uint8_t connected_count=0;
     char map_name[MAX_MAP_NAME_LEN];
     map_t map_snapshot;
 
@@ -597,10 +646,15 @@ int send_full_sync(server_t* server,int client_fd,uint8_t target_id)
     memcpy(tiles,server->state.map.tiles,(size_t)rows*cols*sizeof(*tiles));
     for (uint8_t i=0;i<MAX_PLAYERS;i++) {
         player_slot_t* player=&server->state.players[i];
-        if (!player->connected || !player->alive) continue;
-        synced_players[i]=true;
-        winner_id=i;
-        has_winner=true;
+        if (player->connected) {
+            connected_count++;
+            if (player->ready) ready_count++;
+            if (player->alive) {
+                synced_players[i]=true;
+                winner_id=i;
+                has_winner=true;
+            }
+        }
     }
     pthread_mutex_unlock(&server->state.mutex);
 
@@ -609,6 +663,10 @@ int send_full_sync(server_t* server,int client_fd,uint8_t target_id)
         return -1;
     }
     if (send_selected_map(client_fd,target_id,map_name)<0) {
+        free(tiles);
+        return -1;
+    }
+    if (send_ready_state(client_fd,target_id,ready_count,connected_count)<0) {
         free(tiles);
         return -1;
     }

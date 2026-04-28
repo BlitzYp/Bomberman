@@ -115,10 +115,10 @@ void client_ui_draw_footer(const client_game_t* game)
     }
     else if (game->status==GAME_LOBBY) {
         if (game->selected_map_name[0]!='\0') {
-            snprintf(detail_line,sizeof(detail_line),"Map: %s | size %u x %u  | players 2-8",game->selected_map_name,game->rows,game->cols);
+            snprintf(detail_line,sizeof(detail_line),"Map: %s | size %u x %u | Ready: %u/%u",game->selected_map_name,game->rows,game->cols,game->ready_count,game->connected_count);
         }
         else {
-            snprintf(detail_line,sizeof(detail_line),"Map: (unknown)");
+            snprintf(detail_line,sizeof(detail_line),"Map: (unknown) | Ready: %u/%u",game->ready_count,game->connected_count);
         }
         snprintf(controls_line,sizeof(controls_line),"Lobby: [ ] change map | r ready | s resync | q quit");
     }

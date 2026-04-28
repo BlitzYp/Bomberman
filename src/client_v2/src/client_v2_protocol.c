@@ -65,6 +65,13 @@ int client_v2_recv_welcome(int fd,client_game_t* game)
         strcpy(game->players[id].name,name);
         game->players[id].name[MAX_NAME_LEN]='\0';
         game->players[id].known=true;
+        game->players[id].ready=(ready!=0);
+    }
+
+    game->connected_count=player_count;
+    game->ready_count=0;
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (game->players[i].ready) game->ready_count++;
     }
 
     return 0;
@@ -132,6 +139,7 @@ static int recv_hello_payload(int fd,msg_header_t header,client_game_t* game)
     strcpy(game->players[header.sender_id].name,name);
     game->players[header.sender_id].name[MAX_NAME_LEN]='\0';
     game->players[header.sender_id].known=true;
+    game->players[header.sender_id].ready=false;
 
     snprintf(game->announcement,sizeof(game->announcement),"Player %s joined!",player_name_or_unknown(game,header.sender_id));
     return 0;
@@ -268,6 +276,21 @@ static int recv_winner_payload(int fd,client_game_t* game)
     return 0;
 }
 
+static int recv_ready_state_payload(int fd,client_game_t* game)
+{
+    uint8_t ready_count;
+    uint8_t connected_count;
+
+    if (!game) return -1;
+    if (recv_u8(fd,&ready_count)<0) return -1;
+    if (recv_u8(fd,&connected_count)<0) return -1;
+    if (ready_count>connected_count || connected_count>MAX_PLAYERS) return -1;
+
+    game->ready_count=ready_count;
+    game->connected_count=connected_count;
+    return 0;
+}
+
 static int recv_bonus_available_payload(int fd,client_game_t* game)
 {
     uint8_t bonus_type;
@@ -325,6 +348,7 @@ static int recv_leave_header(msg_header_t header,client_game_t* game)
     if (!game || header.sender_id>=MAX_PLAYERS) return -1;
     game->players[header.sender_id].known=false;
     game->players[header.sender_id].alive=false;
+    game->players[header.sender_id].ready=false;
 
 
     snprintf(game->announcement,sizeof(game->announcement),"Player %s left!",player_name_or_unknown(game,header.sender_id));
@@ -375,6 +399,8 @@ int client_v2_process_server_message(int fd,client_game_t* game)
             return recv_status_payload(fd,game);
         case MSG_SELECTED_MAP:
             return recv_selected_map_payload(fd,game);
+        case MSG_READY_STATE:
+            return recv_ready_state_payload(fd,game);
         case MSG_LEAVE:
             return recv_leave_header(header,game);
         case MSG_MAP:

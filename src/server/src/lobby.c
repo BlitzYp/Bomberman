@@ -49,7 +49,12 @@ int handle_hello(server_t* server, int client_fd, uint8_t slot_id, msg_header_t 
     if (send_hello_broadcast(server,slot_id,msg.client_id,msg.player_name)!=0) return -1;
 
     for (uint8_t i=0;i<connected_count;i++) {
-        if (send_move(server,connected_players[i])!=0) return -1;
+        uint8_t player_id=connected_players[i];
+        // Handle situation when a new player joins mid game
+        pthread_mutex_lock(&server->state.mutex);
+        bool is_in_game=server->state.players[player_id].connected && server->state.players[player_id].alive;
+        pthread_mutex_unlock(&server->state.mutex);
+        if (is_in_game && send_move(server,connected_players[i])!=0) return -1;
     }
 
     printf("HELLO FROM %s SLOT %u\n",msg.player_name,slot_id);

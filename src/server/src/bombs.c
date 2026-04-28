@@ -46,7 +46,7 @@ static bool valid_cell(map_t* map,int r,int c)
     return r>=0 && c>=0 && r<map->rows && c<map->cols;
 }
 
-static bool mark_explosion_start_cell(game_state_t* state,int r,int c,bool* spawned_bonus,bonus_type_t* spawned_type)
+static bool mark_explosion_start_cell(game_state_t* state,int r,int c,bool* spawned_bonus,bonus_type_t* spawned_type,bool* pending_starts,bool* started_this_tick)
 {
     // false means explosion propagation ends in this cell
     if (spawned_bonus) *spawned_bonus=false;
@@ -69,6 +69,26 @@ static bool mark_explosion_start_cell(game_state_t* state,int r,int c,bool* spaw
         return false;
     }
 
+    // Chain explosions
+    if (tile==TILE_BOMB) {
+        bomb_t* bomb_found=NULL;
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            bomb_found=&state->bombs[i];
+            if (bomb_found->state!=BOMB_PLANTED || bomb_found->row!=r || bomb_found->col!=c) {
+                bomb_found=NULL;
+                continue;
+            }
+            break;
+        }
+        if (bomb_found && bomb_found->state==BOMB_PLANTED) {
+            uint8_t bomb_id=(uint8_t)(bomb_found-state->bombs);
+            bomb_found->timer_ticks=0;
+            bomb_found->state=BOMB_EXPLODING;
+            bomb_found->explosion_ticks=EXPLOSION_DURATION_TICKS;
+            pending_starts[bomb_id]=true;
+            started_this_tick[bomb_id]=true;
+        }
+    }
     return true;
 }
 
@@ -85,12 +105,12 @@ bool mark_explosion_end_cell(map_t* map,int r,int c)
     return true;
 }
 
-void apply_explosion_start(server_t* server, bomb_t* bomb,bool* bonus_cells_changed,bonus_type_t* available_cell_types)
+void apply_explosion_start(server_t* server,bomb_t* bomb,bool* bonus_cells_changed,bonus_type_t* available_cell_types,bool* pending_starts,bool* started_this_tick)
 {
     // left,right,up,down
     int8_t dr[4]={0,0,-1,1};
     int8_t dc[4]={-1,1,0,0};
-    mark_explosion_start_cell(&server->state,bomb->row,bomb->col,NULL,NULL);
+    mark_explosion_start_cell(&server->state,bomb->row,bomb->col,NULL,NULL,pending_starts,started_this_tick);
 
     for (uint8_t dir=0;dir<4;dir++) {
         for (uint8_t dist=1;dist<=bomb->radius;dist++) {
@@ -100,7 +120,7 @@ void apply_explosion_start(server_t* server, bomb_t* bomb,bool* bonus_cells_chan
             bonus_type_t spawned_type=BONUS_NONE;
 
             // Attempt to start an explosion from this cell
-            if (!mark_explosion_start_cell(&server->state,r,c,&spawned_bonus,&spawned_type)) {
+            if (!mark_explosion_start_cell(&server->state,r,c,&spawned_bonus,&spawned_type,pending_starts,started_this_tick)) {
                 if (spawned_bonus) {
                     uint16_t cell_index=make_cell_index((uint16_t)r,(uint16_t)c,server->state.map.cols);
                     bonus_cells_changed[cell_index]=true;

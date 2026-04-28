@@ -43,6 +43,8 @@ int recv_welcome(int fd, client_game_t* game)
     if (recv_u8(fd, &player_count) < 0) return -1;
     game->status=(game_status_t)status;
 
+    game->local_player_id=header.sender_id;
+    game->waiting_for_next_round=(game->status==GAME_RUNNING);
     printf("WELCOME\n");
     printf("assigned_id=%u\n", header.sender_id);
     printf("server_id=%s\n", server_id);
@@ -166,6 +168,9 @@ static int recv_player_move_payload(int fd, client_game_t* game)
     game->players[player_id].alive=true;
     game->players[player_id].row=row;
     game->players[player_id].col=col;
+    if (player_id==game->local_player_id) {
+        game->waiting_for_next_round=false;
+    }
 
     return 0;
 }
@@ -178,6 +183,9 @@ static int recv_death_payload(int fd, client_game_t* game)
     if (player_id>=MAX_PLAYERS) return -1;
 
     game->players[player_id].alive=false;
+    if (player_id==game->local_player_id && game->status==GAME_RUNNING) {
+        game->waiting_for_next_round=true;
+    }
 
     return 0;
 }
@@ -236,6 +244,9 @@ static int recv_status_payload(int fd, client_game_t* game)
     if (game->status!=GAME_END) {
         game->has_winner=false;
         game->winner_id=SERVER_TARGET_ID;
+    }
+    if (game->status==GAME_LOBBY) {
+        game->waiting_for_next_round=false;
     }
     if (game->status==GAME_RUNNING && game->bonuses) {
         memset(game->bonuses,BONUS_NONE,(size_t)game->rows*game->cols*sizeof(*game->bonuses));

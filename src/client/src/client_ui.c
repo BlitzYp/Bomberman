@@ -96,6 +96,9 @@ void client_ui_draw_footer(const client_game_t* game)
     else if (game->status==GAME_END) {
         printw("Game over! Press r to restart");
     }
+    else if (game->status==GAME_RUNNING && game->waiting_for_next_round) {
+        printw("Status: GAME IN PROGRESS | Waiting for next round");
+    }
     else {
         printw("Status: %s",status_name(game->status));
     }

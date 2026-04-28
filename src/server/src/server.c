@@ -137,7 +137,9 @@ static void* tick_thread_loop(void* arg)
         usleep(sleep_time);
         bool moved_players[MAX_PLAYERS]={0};
         bool bomb_placed_players[MAX_PLAYERS]={0};
-        bool exploding_bombs[MAX_PLAYERS]={0};
+        bool start_bombs[MAX_PLAYERS]={0};
+        bool pending_starts[MAX_PLAYERS]={0};
+        bool started_this_tick[MAX_PLAYERS]={0};
         bool end_exploding_bombs[MAX_PLAYERS]={0};
         bool dead_players[MAX_PLAYERS]={0};
 
@@ -195,17 +197,31 @@ static void* tick_thread_loop(void* arg)
         update_bomb_timers(server);
 
         // -- resolve explosions
-        collect_bomb_events(server,exploding_bombs,end_exploding_bombs);
+        collect_bomb_events(server,start_bombs,end_exploding_bombs);
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (exploding_bombs[i]) {
-                apply_explosion_start(server,&server->state.bombs[i],bonus_cells_changed,available_cell_types);
-                map_change=true;
+            if (start_bombs[i]) {
+                pending_starts[i]=true;
+                started_this_tick[i]=true;
             }
             if (end_exploding_bombs[i]) {
                 apply_explosion_end(server,&server->state.bombs[i]);
                 map_change=true;
             }
         }
+
+        // Start the initial explosions and and continue till the chain explosions are also done
+        bool found_pending;
+        do {
+            found_pending=false;
+            for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+                if (!pending_starts[i]) continue;
+
+                pending_starts[i]=false;
+                apply_explosion_start(server,&server->state.bombs[i],bonus_cells_changed,available_cell_types,pending_starts,started_this_tick);
+                map_change=true;
+                found_pending=true;
+            }
+        } while (found_pending);
 
         uint8_t alive_count=0,last_alive_player=SERVER_TARGET_ID;
         // - detect deaths and count alive players
@@ -241,7 +257,7 @@ static void* tick_thread_loop(void* arg)
         // All of the map changes are recorded when we broadcast the new map, we can use these functions later for sound effects maybe
         // For now I think we should discard them in the client
         send_bomb_broadcast(server,bomb_placed_players);
-        send_exploding_broadcast(server,exploding_bombs);
+        send_exploding_broadcast(server,started_this_tick);
         send_end_explode_broadcast(server,end_exploding_bombs);
 
         // - Send player alive statuses
@@ -260,16 +276,17 @@ static void* tick_thread_loop(void* arg)
     return NULL;
 }
 
-void init_slot(player_slot_t* slot,int client_fd,uint8_t id,map_t* map)
+void init_slot(player_slot_t* slot,int client_fd,uint8_t id,map_t* map,game_status_t status)
 {
     slot->connected=true;
-    slot->alive=true;
+    bool joined_mid_round=(status==GAME_RUNNING);
+    slot->alive=!joined_mid_round;
     slot->ready=false;
     slot->socket_fd=client_fd;
     slot->id=id;
     slot->name[0]='\0';
     slot->p.id=id;
-    slot->p.alive=true;
+    slot->p.alive=!joined_mid_round;
     slot->p.ready=false;
 
     slot->p.bomb_count=1;
@@ -397,7 +414,7 @@ int run_server(server_t* server)
             player_slot_t* curr_slot=&server->state.players[i];
             // Curr slot is free
             if (!curr_slot->connected) {
-                init_slot(curr_slot,client_fd,i,&server->state.map);
+                init_slot(curr_slot,client_fd,i,&server->state.map,server->state.status);
                 server->state.player_count++;
                 slot_found=true;
                 break;

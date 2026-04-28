@@ -22,5 +22,7 @@ typedef struct {
     game_status_t status;
     bool has_winner;
     uint8_t winner_id;
+    uint8_t local_player_id;
+    bool waiting_for_next_round;
 } client_game_t;
 #endif

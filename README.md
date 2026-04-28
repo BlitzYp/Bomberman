@@ -41,11 +41,9 @@ Implemented so far:
 
 Current limitations:
 
-- client is still a debug client, not the final graphical one
 - client currently discards detailed bomb/explosion event payloads and relies on authoritative `MSG_MAP` updates for tile rendering
 - bonus rendering is event-driven, not part of `MSG_MAP`
 - gameplay around late join is still minimal and not fully specified beyond state sync
-- no final lobby polish or end-screen polish
 - map-file config values beyond the layout/bonus content are not fully used yet
 - map selection currently uses repo-level protocol extensions because the base spec does not fully define the wire flow for it
 
@@ -150,7 +148,7 @@ or:
 make run-client-v2
 ```
 
-Default connection target is `127.0.0.1:1727`.
+Default connection target is `35.187.169.225:1727`.
 
 ## Client Controls
 
@@ -174,8 +172,6 @@ Default connection target is `127.0.0.1:1727`.
 9. Players press `r` again to start the next round.
 
 ## TODO
-
-- deploy the server on a real IP address and port instead of the current local default `127.0.0.1:1727`
 
 ## Notes
 

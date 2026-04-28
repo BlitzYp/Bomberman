@@ -28,6 +28,13 @@ static const char* bonus_type_name(bonus_type_t bonus)
     }
 }
 
+static const char* player_name_or_unknown(const client_game_t* game, uint8_t player_id)
+{
+    if (!game || player_id>=MAX_PLAYERS) return "Unknown";
+    if (game->players[player_id].name[0]=='\0') return "Unknown";
+    return game->players[player_id].name;
+}
+
 int recv_welcome(int fd, client_game_t* game)
 {
     msg_header_t header;
@@ -87,7 +94,7 @@ static int recv_hello_payload(int fd, msg_header_t header, client_game_t* game)
     game->players[header.sender_id].name[MAX_NAME_LEN]='\0';
 
     char ann[128];
-    snprintf(ann,sizeof(ann),"Player %s joined!",name);
+    snprintf(ann,sizeof(ann),"Player %s joined!",player_name_or_unknown(game,header.sender_id));
     client_ui_set_announcement(game,ann);
     return 0;
 }
@@ -201,8 +208,7 @@ static int recv_death_payload(int fd, client_game_t* game)
     }
 
     char ann[128];
-    char* name=game->players[player_id].name;
-    snprintf(ann,sizeof(ann),"Player %s died!",name);
+    snprintf(ann,sizeof(ann),"Player %s died!",player_name_or_unknown(game,player_id));
     client_ui_set_announcement(game,ann);
     return 0;
 }
@@ -318,8 +324,7 @@ static int recv_bonus_retrieved_payload(int fd, client_game_t* game)
     bonus_type=game->bonuses[cell_index];
     game->bonuses[cell_index]=BONUS_NONE;
 
-    player_name=game->players[player_id].name;
-    if (player_name[0]=='\0') player_name="Unknown";
+    player_name=player_name_or_unknown(game,player_id);
 
     snprintf(message,sizeof(message),"%s collected %s bonus",player_name,bonus_type_name(bonus_type));
     client_ui_set_announcement(game,message);

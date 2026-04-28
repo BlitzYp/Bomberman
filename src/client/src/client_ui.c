@@ -115,7 +115,7 @@ void client_ui_draw_footer(const client_game_t* game)
     }
     else if (game->status==GAME_LOBBY) {
         if (game->selected_map_name[0]!='\0') {
-            snprintf(detail_line,sizeof(detail_line),"Map: %s | size %d x %d | posible player count 2-8",game->selected_map_name, game->cols, game->rows);
+            snprintf(detail_line,sizeof(detail_line),"Map: %s | size %u x %u  | players 2-8",game->selected_map_name,game->rows,game->cols);
         }
         else {
             snprintf(detail_line,sizeof(detail_line),"Map: (unknown)");
@@ -146,12 +146,10 @@ void client_ui_redraw(WINDOW* map_wind, const client_game_t* game)
     draw_map(map_wind,game);
     draw_bonuses(map_wind,game);
 
-    if (game->status!=GAME_LOBBY) {
-        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-            if (!game->players[i].known) continue;
-            if (!game->players[i].alive) continue;
-            mvwaddch(map_wind,game->players[i].row+1,game->players[i].col+1,(chtype)('1'+i));
-        }
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        if (!game->players[i].known) continue;
+        if (!game->players[i].alive) continue;
+        mvwaddch(map_wind,game->players[i].row+1,game->players[i].col+1,(chtype)('1'+i));
     }
 
     wrefresh(map_wind);

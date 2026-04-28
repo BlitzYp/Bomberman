@@ -93,6 +93,24 @@ static void clear_loaded_map_state(game_state_t* state)
     memset(&state->initial_map,0,sizeof(state->initial_map));
 }
 
+static void restore_initial_map_state(game_state_t* state)
+{
+    if (!state || !state->map.tiles || !state->initial_map.tiles || !state->bonuses) return;
+    // Tiles
+    memcpy(state->map.tiles,state->initial_map.tiles,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.tiles));
+    // Map bonuses
+    memcpy(state->map.bonuses,state->initial_map.bonuses,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.bonuses));
+    state->map.rows=state->initial_map.rows;
+    state->map.cols=state->initial_map.cols;
+    // Spawn locations
+    state->map.spawn_count=state->initial_map.spawn_count;
+    memcpy(state->map.spawn_cells,state->initial_map.spawn_cells,sizeof(state->map.spawn_cells));
+    // Bombs
+    memset(state->bombs,0,sizeof(state->bombs));
+    // Game state bonuses
+    memcpy(state->bonuses,state->initial_map.bonuses,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->bonuses));
+}
+
 int game_state_load_selected_map(game_state_t *state)
 {
     if (!state) return -1;
@@ -204,6 +222,8 @@ int game_state_reset_round(game_state_t* state)
     if (!state || !state->map.tiles || !state->initial_map.tiles) return -1;
     if (state->map.rows!=state->initial_map.rows || state->map.cols!=state->initial_map.cols) return -1;
 
+    restore_initial_map_state(state);
+
     state->action_queue.head=0;
     state->action_queue.tail=0;
     state->action_queue.count=0;
@@ -221,19 +241,7 @@ int game_state_start_round(game_state_t* state)
     if (!state || !state->map.tiles || !state->initial_map.tiles) return -1;
     if (state->map.rows!=state->initial_map.rows || state->map.cols!=state->initial_map.cols) return -1;
 
-    // Tiles
-    memcpy(state->map.tiles,state->initial_map.tiles,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.tiles));
-    // Map bonuses
-    memcpy(state->map.bonuses,state->initial_map.bonuses,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.bonuses));
-    state->map.rows=state->initial_map.rows;
-    state->map.cols=state->initial_map.cols;
-    state->map.spawn_count=state->initial_map.spawn_count;
-    // Spawn locations
-    memcpy(state->map.spawn_cells,state->initial_map.spawn_cells,sizeof(state->map.spawn_cells));
-
-    memset(state->bombs,0,sizeof(state->bombs));
-    // Game state bonuses
-    memcpy(state->bonuses,state->initial_map.bonuses,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->bonuses));
+    restore_initial_map_state(state);
 
     state->action_queue.head=0;
     state->action_queue.tail=0;

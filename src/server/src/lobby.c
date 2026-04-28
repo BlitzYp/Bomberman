@@ -212,6 +212,11 @@ int handle_set_ready(server_t* server,uint8_t slot_id)
         }
     } else if (should_restart) {
         if (send_status_broadcast(server,GAME_LOBBY)<0) return -1;
+        if (broadcast_map(server)<0) return -1;
+        if (broadcast_all_bonuses(server)<0) return -1;
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            if (send_move(server,i)!=0) continue;
+        }
     }
 
     return 0;

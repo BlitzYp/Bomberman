@@ -31,15 +31,35 @@ int main(int argc, char** argv)
 {
     char client_id[MAX_CLIENT_ID_LEN];
     char player_name[MAX_NAME_LEN];
+    const char* host="35.187.169.225";
+    int port=1727;
+    bool player_name_set=false;
 
     snprintf(client_id,sizeof(client_id),"client-%ld",(long)getpid());
-    if (argc>1) snprintf(player_name,sizeof(player_name),"%s",argv[1]);
-    else snprintf(player_name,sizeof(player_name),"Player-%ld",(long)getpid());
+    snprintf(player_name,sizeof(player_name),"Player-%ld",(long)getpid());
+
+    for (int i=1;i<argc;i++) {
+        if (strcmp(argv[i],"-l")==0) {
+            host="127.0.0.1";
+            continue;
+        }
+        if (!player_name_set) {
+            snprintf(player_name,sizeof(player_name),"%s",argv[i]);
+            player_name_set=true;
+            continue;
+        }
+
+        port=atoi(argv[i]);
+        if (port<=0 || port>65535) {
+            fprintf(stderr,"invalid port\n");
+            return 1;
+        }
+    }
 
     client_game_t game;
     memset(&game,0,sizeof(game));
 
-    int fd=connect_to_server("35.187.169.225", 1727);
+    int fd=connect_to_server(host,port);
     if (fd<0) {
         return client_fail(NULL,NULL,-1,&game,"connect failed");
     }

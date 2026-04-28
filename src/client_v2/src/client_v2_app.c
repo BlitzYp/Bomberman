@@ -147,10 +147,22 @@ void client_v2_app_draw(const client_v2_app_t* app)
             }
             // Bonuses
             if (app->game.bonuses && app->game.bonuses[cell]!=BONUS_NONE && app->game.tiles[cell]==TILE_EMPTY) {
-                if (app->game.bonuses[cell]==BONUS_BOMB_COUNT) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, RED);
-                if (app->game.bonuses[cell]==BONUS_RADIUS) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, YELLOW);
-                if (app->game.bonuses[cell]==BONUS_SPEED) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), RED, YELLOW);
-                if (app->game.bonuses[cell]==BONUS_TIMER) DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, GREEN);
+                if (app->game.bonuses[cell]==BONUS_BOMB_COUNT) {
+                    DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, RED);
+                    DrawText("N", dst.x+dst.width*0.4f, dst.y+dst.height*0.35f, 18, BLACK);
+                }
+                if (app->game.bonuses[cell]==BONUS_RADIUS) {
+                    DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, YELLOW);
+                    DrawText("R", dst.x+dst.width*0.4f, dst.y+dst.height*0.35f, 18, BLACK);
+                }
+                if (app->game.bonuses[cell]==BONUS_SPEED) { 
+                    DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), RED, YELLOW);
+                    DrawText("A", dst.x+dst.width*0.4f, dst.y+dst.height*0.35f, 18, BLACK);
+                }            
+                if (app->game.bonuses[cell]==BONUS_TIMER) { 
+                    DrawCircleGradient((Vector2){ dst.x+dst.width*0.5f, dst.y+dst.height*0.5f }, (float)(app->tile_draw_size*0.3f), GRAY, GREEN);
+                    DrawText("T", dst.x+dst.width*0.38f, dst.y+dst.height*0.35f, 18, BLACK);
+                }
             }
         }
     }
@@ -163,7 +175,7 @@ void client_v2_app_draw(const client_v2_app_t* app)
         float size=(float)app->tile_draw_size;
 
         DrawCircle((int)(dst.x+size*0.5f),(int)(dst.y+size*0.5f),size*0.24f,PLAYER_COLORS[i]);
-        DrawText(TextFormat("%u",(unsigned)(i+1)),(int)(dst.x+size*0.38f),(int)(dst.y+size*0.28f),18,BLACK);
+        DrawText(TextFormat("%u",(unsigned)(i+1)),(int)(dst.x+size*0.4f),(int)(dst.y+size*0.35f),18,BLACK);
     }
 
     snprintf(status_line,sizeof(status_line),"Status: %s",status_name(app->game.status));

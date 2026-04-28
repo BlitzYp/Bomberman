@@ -111,11 +111,11 @@ void client_ui_draw_footer(const client_game_t* game)
         const char* winner_name=game->players[game->winner_id].name;
         if (winner_name[0]=='\0') winner_name="Unknown";
         snprintf(detail_line,sizeof(detail_line),"Winner: %s",winner_name);
-        snprintf(controls_line,sizeof(controls_line),"Press r to restart | q quit");
+        snprintf(controls_line,sizeof(controls_line),"Press r to return to lobby | q quit");
     }
     else if (game->status==GAME_LOBBY) {
         if (game->selected_map_name[0]!='\0') {
-            snprintf(detail_line,sizeof(detail_line),"Map: %s",game->selected_map_name);
+            snprintf(detail_line,sizeof(detail_line),"Map: %s | size %d x %d | posible player count 2-8",game->selected_map_name, game->cols, game->rows);
         }
         else {
             snprintf(detail_line,sizeof(detail_line),"Map: (unknown)");
@@ -146,10 +146,12 @@ void client_ui_redraw(WINDOW* map_wind, const client_game_t* game)
     draw_map(map_wind,game);
     draw_bonuses(map_wind,game);
 
-    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
-        if (!game->players[i].known) continue;
-        if (!game->players[i].alive) continue;
-        mvwaddch(map_wind,game->players[i].row+1,game->players[i].col+1,(chtype)('1'+i));
+    if (game->status!=GAME_LOBBY) {
+        for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+            if (!game->players[i].known) continue;
+            if (!game->players[i].alive) continue;
+            mvwaddch(map_wind,game->players[i].row+1,game->players[i].col+1,(chtype)('1'+i));
+        }
     }
 
     wrefresh(map_wind);

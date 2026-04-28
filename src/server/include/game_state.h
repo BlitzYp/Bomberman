@@ -59,6 +59,7 @@ typedef struct {
 
 int game_state_init(game_state_t* state);
 void game_state_destroy(game_state_t* state);
+int game_state_start_round(game_state_t* state);
 int game_state_reset_round(game_state_t* state);
 int game_state_load_selected_map(game_state_t* state);
 

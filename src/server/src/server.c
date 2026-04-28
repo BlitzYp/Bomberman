@@ -156,6 +156,9 @@ static void* tick_thread_loop(void* arg)
             pthread_mutex_unlock(&server->state.mutex);
             break;
         }
+        if (server->state.player_count==0 && server->state.status==GAME_END) {
+            game_state_reset_round(&server->state);
+        }
         if (server->state.status!=GAME_RUNNING) {
             pthread_mutex_unlock(&server->state.mutex);
             continue;

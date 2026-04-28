@@ -163,6 +163,7 @@ int handle_set_ready(server_t* server,uint8_t slot_id)
 {
     if (!server || slot_id>=MAX_PLAYERS) return -1;
     bool should_start=false;
+    bool should_restart=false;
 
     pthread_mutex_lock(&server->state.mutex);
     if (server->state.status!=GAME_LOBBY && server->state.status!=GAME_END) {
@@ -187,12 +188,18 @@ int handle_set_ready(server_t* server,uint8_t slot_id)
         if (!p->ready) all_ready=false;
     }
 
-    if (connected>=2 && all_ready) {
-        if (game_state_reset_round(&server->state)!=0) {
+    if (connected>=2 && all_ready && server->state.status==GAME_LOBBY) {
+        if (game_state_start_round(&server->state)!=0) {
             pthread_mutex_unlock(&server->state.mutex);
             return -1;
         }
         should_start=true;
+    } else if (all_ready && server->state.status==GAME_END) {
+        if (game_state_reset_round(&server->state)!=0) {
+            pthread_mutex_unlock(&server->state.mutex);
+            return -1;
+        }
+        should_restart=true;
     }
     pthread_mutex_unlock(&server->state.mutex);
 
@@ -203,6 +210,8 @@ int handle_set_ready(server_t* server,uint8_t slot_id)
         for (uint8_t i=0;i<MAX_PLAYERS;i++) {
             if (send_move(server,i)!=0) continue;
         }
+    } else if (should_restart) {
+        if (send_status_broadcast(server,GAME_LOBBY)<0) return -1;
     }
 
     return 0;

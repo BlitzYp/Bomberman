@@ -204,6 +204,23 @@ int game_state_reset_round(game_state_t* state)
     if (!state || !state->map.tiles || !state->initial_map.tiles) return -1;
     if (state->map.rows!=state->initial_map.rows || state->map.cols!=state->initial_map.cols) return -1;
 
+    state->action_queue.head=0;
+    state->action_queue.tail=0;
+    state->action_queue.count=0;
+
+    for (uint8_t i=0;i<MAX_PLAYERS;i++) {
+        reset_player_for_round(&state->players[i],&state->map);
+    }
+
+    state->status=GAME_LOBBY;
+    return 0;
+}
+
+int game_state_start_round(game_state_t* state)
+{
+    if (!state || !state->map.tiles || !state->initial_map.tiles) return -1;
+    if (state->map.rows!=state->initial_map.rows || state->map.cols!=state->initial_map.cols) return -1;
+
     // Tiles
     memcpy(state->map.tiles,state->initial_map.tiles,(size_t)state->initial_map.rows*state->initial_map.cols*sizeof(*state->map.tiles));
     // Map bonuses

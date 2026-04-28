@@ -1,6 +1,11 @@
 #ifndef CLIENT_V2_APP_H
 #define CLIENT_V2_APP_H
 
+#define FOOTER_STATUS_OFFSET 0
+#define FOOTER_DETAIL_OFFSET 28
+#define FOOTER_CONTROLS_OFFSET 56
+#define FOOTER_EVENT_OFFSET 84
+
 #include "../../shared/include/config.h"
 #include "../../client/include/client.h"
 

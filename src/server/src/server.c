@@ -245,6 +245,7 @@ static void* tick_thread_loop(void* arg)
             alive_count++;
             last_alive_player=i;
         }
+        // - check win condition
         if (alive_count<=1) {
             server->state.status=GAME_END;
             game_end=true;
@@ -254,7 +255,6 @@ static void* tick_thread_loop(void* arg)
             }
         }
 
-        // - check win condition
         pthread_mutex_unlock(&server->state.mutex);
 
         // Send move message to all here to avoid deadlock situation

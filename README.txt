@@ -1,5 +1,7 @@
 Bomberman
 
+Github saite: https://github.com/BlitzYp/Bomberman
+
 Grupas dalībnieki:
 - Mārcis Deguts
 - Gustavs Krasņikovs
